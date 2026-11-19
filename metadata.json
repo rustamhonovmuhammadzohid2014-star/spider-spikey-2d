@@ -1,0 +1,6 @@
+{
+  "name": "Spider Spikey 2 - D Pixel Game",
+  "description": "A complete 16-bit pixel-art 2D action platformer starring Spikey the brave little spider across 5 worlds and 5 epic boss battles in Weboria.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -36,6 +36,11 @@ export const DEFAULT_SETTINGS: GameSettings = {
   resolutionScale: 'auto',
   touchMode: 'auto',
   tutorialWatched: false,
+  dismissedZaiAlertKey: null,
+  notificationsEnabled: true,
+  reducedMotion: false,
+  screenShake: true,
+  highContrastHud: false,
   keyBindings: { ...DEFAULT_KEYBINDINGS },
 };
 
@@ -62,6 +67,10 @@ export function createInitialSaveData(): SaveData {
     bossesDefeated: [],
     enemiesDefeatedTotal: 0,
     secretsFoundTotal: 0,
+    chapter2Unlocked: false,
+    chapter2CurrentSectorId: 'C2-1',
+    chapter2UnlockedSectors: ['C2-1'],
+    chapter2Progress: {},
   };
 }
 
@@ -89,6 +98,14 @@ export function normalizeSaveData(parsed?: Partial<SaveData> | null): SaveData {
     bossesDefeated: Array.isArray(parsed.bossesDefeated)
       ? parsed.bossesDefeated
       : [],
+    chapter2Unlocked: Boolean(parsed.chapter2Unlocked),
+    chapter2CurrentSectorId: parsed.chapter2CurrentSectorId || 'C2-1',
+    chapter2UnlockedSectors:
+      Array.isArray(parsed.chapter2UnlockedSectors) &&
+      parsed.chapter2UnlockedSectors.length > 0
+        ? parsed.chapter2UnlockedSectors
+        : ['C2-1'],
+    chapter2Progress: parsed.chapter2Progress ?? {},
   };
 }
 
@@ -142,6 +159,14 @@ export function loadSettings(): GameSettings {
       graphicsQuality: parsed.graphicsQuality ?? 'high',
       menuThemeMode: parsed.menuThemeMode ?? 'winter',
       tutorialWatched: Boolean(parsed.tutorialWatched),
+      dismissedZaiAlertKey:
+        typeof parsed.dismissedZaiAlertKey === 'string' && parsed.dismissedZaiAlertKey.length > 0
+          ? parsed.dismissedZaiAlertKey
+          : null,
+      notificationsEnabled: parsed.notificationsEnabled !== false,
+      reducedMotion: Boolean(parsed.reducedMotion),
+      screenShake: parsed.screenShake !== false,
+      highContrastHud: Boolean(parsed.highContrastHud),
       keyBindings: migratedKb,
     };
   } catch {

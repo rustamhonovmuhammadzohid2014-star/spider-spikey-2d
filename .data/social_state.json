@@ -1,0 +1,52 @@
+{
+  "hmacSecret": "3d2c7bf98863d614d84192ff7d10f26e964c13d5e2f4774ca810ad23af7c089a",
+  "accounts": {
+    "creator_admin": {
+      "uid": "creator_admin",
+      "accountId": "SPK-ADMIN1",
+      "nickname": "Admin",
+      "avatarId": "av_aurora_mythic",
+      "isCreator": true,
+      "friends": [
+        "local_mwulvmrd_sj8w"
+      ],
+      "incomingRequests": [],
+      "outgoingRequests": [
+        "local_mwul1jhk_z5hq"
+      ],
+      "pendingGifts": [],
+      "createdAt": "2026-11-24T10:44:34.474Z",
+      "updatedAt": "2026-11-24T11:31:10.548Z"
+    },
+    "local_mwul1jhk_z5hq": {
+      "uid": "local_mwul1jhk_z5hq",
+      "accountId": "SPK-58FSY2",
+      "nickname": "Asror",
+      "avatarId": "av_emerald_spikey",
+      "isCreator": false,
+      "friends": [],
+      "incomingRequests": [
+        "creator_admin"
+      ],
+      "outgoingRequests": [],
+      "pendingGifts": [],
+      "createdAt": "2026-11-24T11:09:46.156Z",
+      "updatedAt": "2026-11-24T11:22:13.931Z"
+    },
+    "local_mwulvmrd_sj8w": {
+      "uid": "local_mwulvmrd_sj8w",
+      "accountId": "SPK-U4JMJH",
+      "nickname": "Iqbolmirzo",
+      "avatarId": "av_classic_spikey",
+      "isCreator": false,
+      "friends": [
+        "creator_admin"
+      ],
+      "incomingRequests": [],
+      "outgoingRequests": [],
+      "pendingGifts": [],
+      "createdAt": "2026-11-24T11:23:02.780Z",
+      "updatedAt": "2026-11-24T11:29:10.058Z"
+    }
+  }
+}

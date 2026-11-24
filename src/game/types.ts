@@ -19,7 +19,15 @@ export type ScreenState =
   | 'ACHIEVEMENTS'
   | 'LEADERBOARD'
   | 'TRADING'
-  | 'EVENTS';
+  | 'EVENTS'
+  | 'FRIENDS'
+  | 'OWNERS_GIFT'
+  | 'PROFILE'
+  | 'CHAPTER2_PLAYING'
+  | 'CHAPTER2_PAUSED'
+  | 'CHAPTER2_CLEAR'
+  | 'CHAPTER2_GAME_OVER'
+  | 'CHAPTER2_VICTORY';
 
 export type ModalTab = 'NONE' | 'SETTINGS' | 'ACHIEVEMENTS' | 'CREDITS' | 'TUTORIAL';
 
@@ -144,6 +152,11 @@ export interface GameSettings {
   resolutionScale: ResolutionScale;
   touchMode: TouchMode;
   tutorialWatched?: boolean;
+  dismissedZaiAlertKey?: string | null;
+  notificationsEnabled?: boolean;
+  reducedMotion?: boolean;
+  screenShake?: boolean;
+  highContrastHud?: boolean;
   keyBindings: KeyBindings;
 }
 
@@ -168,6 +181,101 @@ export interface SaveData {
   bossesDefeated: BossType[];
   enemiesDefeatedTotal: number;
   secretsFoundTotal: number;
+  chapter2Unlocked?: boolean;
+  chapter1Survey?: {
+    rating: 'awesome' | 'challenging' | 'hard';
+    acceptedChapter2: boolean;
+    answeredAt: string;
+  };
+  chapter2CurrentSectorId?: string;
+  chapter2UnlockedSectors?: string[];
+  chapter2Progress?: Record<
+    string,
+    {
+      completed: boolean;
+      bestScore: number;
+      bestTimeSec: number;
+      stars: number;
+    }
+  >;
+}
+
+export type Chapter2EnemyKind =
+  | 'voidDrone'
+  | 'sawBot'
+  | 'riftTurret'
+  | 'voidStalker'
+  | 'eliteSentinel';
+
+export interface Chapter2SectorDef {
+  id: string;
+  sectorNumber: number;
+  name: string;
+  subtitle: string;
+  arenaWidth: number;
+  arenaHeight: number;
+  bgPrimary: string;
+  bgSecondary: string;
+  gridColor: string;
+  accentColor: string;
+  hazardKind: 'none' | 'rotatingLasers' | 'warpMaze' | 'gravityWell' | 'cyberBoss';
+  totalWaves: number;
+  isBossSector: boolean;
+  bossName?: string;
+  pylons: { x: number; y: number }[];
+  warpPairs?: { ax: number; ay: number; bx: number; by: number }[];
+  walls?: { x: number; y: number; w: number; h: number }[];
+  gravityWells?: { x: number; y: number; radius: number; strength: number }[];
+  tutorialHint: string;
+}
+
+export interface Chapter2HudSnapshot {
+  sectorId: string;
+  sectorName: string;
+  hp: number;
+  maxHp: number;
+  energy: number;
+  maxEnergy: number;
+  lives: number;
+  wave: number;
+  totalWaves: number;
+  enemiesRemaining: number;
+  coresCollected: number;
+  coresTotal: number;
+  coins: number;
+  spikeyCoinsTotal: number;
+  score: number;
+  combo: number;
+  elapsedSec: number;
+  cooldowns: {
+    blink: number;
+    sanctuary: number;
+    supernova: number;
+    tether: number;
+  };
+  boss: {
+    active: boolean;
+    name: string;
+    hp: number;
+    maxHp: number;
+    phase: number;
+  } | null;
+  bannerText: string | null;
+  isCreator?: boolean;
+}
+
+export interface Chapter2ClearSummary {
+  sectorId: string;
+  sectorName: string;
+  isBossSector: boolean;
+  isFinalChapter2Boss: boolean;
+  coinsEarned: number;
+  scoreEarned: number;
+  timeSec: number;
+  stars: number;
+  noDamageBonus: boolean;
+  enemiesDefeatedCount: number;
+  nextSectorId: string | null;
 }
 
 export interface AchievementDef {
@@ -247,13 +355,35 @@ export const SPIDER_COLOR_META: Record<
   },
 };
 
+export interface BuiltInAvatarDef {
+  id: string;
+  name: string;
+  category: 'classic' | 'character' | 'seasonal' | 'zai';
+  skinId: string;
+  bgGradient: string;
+  borderHex: string;
+  unlockSeasonLevel?: number;
+}
+
+export interface ProfileFrameDef {
+  id: string;
+  name: string;
+  borderHex: string;
+  glowRgba: string;
+}
+
 export interface UserProfileData {
   uid: string;
-  displayName: string;
-  email: string;
-  photoURL: string;
+  accountId?: string;
+  isCreator?: boolean;
   nickname: string;
+  avatarId: string;
+  customAvatarDataUrl?: string | null;
+  profileFrame?: string;
   spiderColor: SpiderColorId;
+  starterCasesGranted?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
   profileCompleted: boolean;
 }
 
@@ -263,6 +393,16 @@ export interface EconomyTransaction {
   amount: number;
   labelUz: string;
   timestamp: string;
+}
+
+export interface OwnerGiftRecord {
+  giftId: string;
+  coins: number;
+  skinId?: string;
+  webDesignId?: string;
+  caseType?: CaseType;
+  caseQty?: number;
+  receivedAt: string;
 }
 
 export interface EconomyData {
@@ -275,6 +415,7 @@ export interface EconomyData {
   seasonMonthKey: string;
   seasonXp: number;
   claimedSeasonLevels: number[];
+  claimedBonusSeasonLevels?: number[];
   dailyStreak: number;
   claimedDailyDays: number[];
   lastDailyClaimDate: string;
@@ -287,20 +428,29 @@ export interface EconomyData {
   mythicsFoundTotal: number;
   skinsSoldTotal: number;
   tradesCompletedTotal: number;
+  noDamageStreak?: number;
   unlockedEconomyAchievements: string[];
+  unlockedAvatars?: string[];
+  unlockedProfileFrames?: string[];
+  equippedProfileFrame?: string;
   transactions: EconomyTransaction[];
   processedTxIds: string[];
+  ownerGiftsReceived?: OwnerGiftRecord[];
   playerXp?: number;
   playerLevel?: number;
   equippedWebDesign?: string;
   ownedWebDesigns?: Record<string, number>;
   selectedLanguage?: string;
+  isCreator?: boolean;
 }
 
 export interface LeaderboardEntry {
   uid: string;
   isPublic: boolean;
+  isAiRival?: boolean;
   nickname: string;
+  avatarId?: string;
+  profileFrame?: string;
   equippedSkin: string;
   seasonLevel: number;
   seasonMonthKey: string;
@@ -658,6 +808,7 @@ export interface HudSnapshot {
   elapsedSec: number;
   webAttached?: boolean;
   spiderHouseProgress?: number | null;
+  isCreator?: boolean;
 }
 
 export interface StageClearSummary {
@@ -674,6 +825,9 @@ export interface StageClearSummary {
   newlyUnlockedAbility: AbilityId | null;
   nextStageId: string | null;
   enemiesDefeatedCount?: number;
+  housesBuiltCount?: number;
+  webSwingsCount?: number;
+  secretsFoundCount?: number;
   bossType?: BossType;
   playerXpEarned?: number;
 }

@@ -13,8 +13,6 @@ import {
   Gift,
   Globe,
   Lock,
-  LogOut,
-  Mail,
   Maximize,
   Minimize,
   Package,
@@ -28,10 +26,13 @@ import {
   Target,
   TrendingUp,
   Trophy,
+  User,
+  UserPlus,
   Volume2,
   X,
 } from 'lucide-react';
 import { audio } from '../game/audio';
+import { CHAPTER2_SECTORS } from '../game/chapter2Levels';
 import { getPlayerLevelProgress } from '../game/economy';
 import { getLanguageDef, tr } from '../game/i18n';
 import { ALL_STAGES, STAGE_MAP } from '../game/levels';
@@ -39,6 +40,7 @@ import { LiveCalendarInfo, getSeasonLevelFromXp } from '../game/seasons';
 import { getSkinById } from '../game/skins';
 import { drawSeasonalMenuScene } from '../game/sprites';
 import { formatKeyCode } from '../game/storage';
+import { Chapter2SurveyModal } from './Chapter2Modals';
 import {
   ABILITY_META,
   ACHIEVEMENTS,
@@ -56,10 +58,12 @@ import {
   SeasonMonth,
   StageClearSummary,
   TouchMode,
+  UserProfileData,
   WORLD_THEMES,
   WorldId,
 } from '../game/types';
 import { getWebDesignById } from '../game/webDesigns';
+import { AvatarBadge } from './AvatarBadge';
 import { SkinPreviewCanvas, WebDesignPreviewCanvas } from './SkinPreviewCanvas';
 
 // Dinamik 16-bit Qish / Sezonli bosh menyu foni
@@ -129,21 +133,19 @@ interface MainMenuProps {
     label: string;
     onClick: () => void;
   } | null;
-  isTrialMode?: boolean;
-  nickname?: string | null;
-  userEmail?: string | null;
-  userName?: string | null;
+  profile?: UserProfileData | null;
   incomingTradesCount?: number;
+  pendingFriendRequestsCount?: number;
   dailyClaimReady?: boolean;
   seasonClaimReadyCount?: number;
   missionsClaimReadyCount?: number;
   onToggleSeasonTheme?: () => void;
   onOpenLanguage?: () => void;
   onOpenTutorial?: () => void;
-  onConnectGmail?: () => void;
-  onSignOut?: () => void;
+  onOpenOwnerPanel?: () => void;
   onPlay: () => void;
   onContinue: () => void;
+  onEnterChapter2?: () => void;
   onNavigateScreen: (screen: ScreenState) => void;
   onOpenModal: (tab: ModalTab) => void;
 }
@@ -156,21 +158,19 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   menuThemeMode = 'winter',
   graphicsQuality = 'high',
   reopenZaiAlert,
-  isTrialMode = false,
-  nickname,
-  userEmail,
-  userName,
+  profile,
   incomingTradesCount = 0,
+  pendingFriendRequestsCount = 0,
   dailyClaimReady = false,
   seasonClaimReadyCount = 0,
   missionsClaimReadyCount = 0,
   onToggleSeasonTheme,
   onOpenLanguage,
   onOpenTutorial,
-  onConnectGmail,
-  onSignOut,
+  onOpenOwnerPanel,
   onPlay,
   onContinue,
+  onEnterChapter2,
   onNavigateScreen,
   onOpenModal,
 }) => {
@@ -305,43 +305,33 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             <div className="flex flex-col leading-none">
               <span className="font-pixel text-[8px] text-amber-300/80">{tr(lang, 'spikeyCoins')}</span>
               <span className="font-mono-num text-xs sm:text-sm font-bold text-amber-300">
-                {economy.spikeyCoins.toLocaleString()}
+                {economy.isCreator ? '∞' : economy.spikeyCoins.toLocaleString()}
               </span>
             </div>
           </div>
 
-          {isTrialMode ? (
-            <>
-              <span className="text-amber-300 text-[11px]">BEPUL SINOV (1-2)</span>
-              {onConnectGmail && (
-                <button
-                  type="button"
-                  onClick={click(onConnectGmail)}
-                  className="pixel-btn bg-sky-600 hover:bg-sky-500 px-3 py-1.5 text-[11px] text-white flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  <Mail className="w-3 h-3" />
-                  <span>GMAIL ULASH</span>
-                </button>
-              )}
-            </>
-          ) : (
-            <>
-              {(nickname || userEmail) && (
-                <span className="text-emerald-300 truncate max-w-[140px]" title={userEmail ?? ''}>
-                  {nickname || userName || userEmail}
+          {profile && (
+            <button
+              type="button"
+              onClick={click(() => onNavigateScreen('PROFILE'))}
+              title={tr(lang, 'profileTitle')}
+              className="pixel-btn min-h-[44px] bg-slate-900/90 hover:bg-slate-800 border-sky-400/60 px-2.5 py-1.5 flex items-center gap-2 cursor-pointer"
+            >
+              <AvatarBadge
+                avatarId={profile.avatarId}
+                customAvatarDataUrl={profile.customAvatarDataUrl}
+                profileFrameId={economy.equippedProfileFrame || profile.profileFrame}
+                size="xs"
+              />
+              <span className="font-pixel text-[10px] text-emerald-300 truncate max-w-[120px]">
+                {profile.nickname}
+              </span>
+              {(profile.isCreator || economy.isCreator) && (
+                <span className="px-1 py-0.5 bg-amber-500 text-slate-950 font-pixel text-[8px] font-bold">
+                  VIP
                 </span>
               )}
-              {onSignOut && (
-                <button
-                  type="button"
-                  onClick={click(onSignOut)}
-                  className="pixel-btn bg-slate-900/85 hover:bg-rose-950/85 px-2.5 py-1.5 text-[11px] text-slate-200 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  <LogOut className="w-3 h-3" />
-                  <span>CHIQISH</span>
-                </button>
-              )}
-            </>
+            </button>
           )}
         </div>
       </header>
@@ -355,7 +345,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                 SPIDER <span style={{ color: menuThemeMode === 'winter' ? '#67e8f9' : calendar.season.accentColor }}>SPIKEY</span>
               </h1>
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-lg">
-                5 Dunyo · 15 Bosqich · Q To‘rda Uchish · E O‘rgimchak Uyi · ZAI Limited Edition!
+                {tr(lang, 'gameSubtitle')}
               </p>
             </div>
 
@@ -435,6 +425,23 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                 {saveData.hasStarted ? `${saveData.currentStageId}` : '---'}
               </span>
             </button>
+
+            {(saveData.chapter2Unlocked || profile?.isCreator || economy.isCreator) && onEnterChapter2 && (
+              <button
+                type="button"
+                onMouseEnter={hover}
+                onClick={click(onEnterChapter2)}
+                className="sm:col-span-4 pixel-btn bg-gradient-to-r from-cyan-950/95 via-slate-900 to-fuchsia-950/85 hover:brightness-110 border-cyan-400/75 text-cyan-200 px-5 py-2.5 font-pixel text-xs flex items-center justify-between cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-cyan-300" />
+                  <span>CHAPTER 2 · ASTRAL VOID (360° COSMIC ARENA)</span>
+                </span>
+                <span className="font-mono-num text-[11px] text-cyan-300">
+                  {saveData.chapter2CurrentSectorId || 'C2-1'}
+                </span>
+              </button>
+            )}
 
             {/* Economy & Season & ZAI Navigation */}
             <button
@@ -580,6 +587,16 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             <button
               type="button"
               onMouseEnter={hover}
+              onClick={click(() => onNavigateScreen('PROFILE'))}
+              className="pixel-btn bg-slate-900/90 hover:bg-slate-800 border-emerald-500/50 text-slate-100 px-3.5 py-2.5 font-pixel text-[11px] flex items-center gap-2 cursor-pointer"
+            >
+              <User className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{tr(lang, 'profileMenuBtn')}</span>
+            </button>
+
+            <button
+              type="button"
+              onMouseEnter={hover}
               onClick={click(() => onOpenModal('SETTINGS'))}
               className="pixel-btn bg-slate-800 hover:bg-slate-700 text-slate-100 px-3.5 py-2.5 font-pixel text-[11px] flex items-center gap-2 cursor-pointer"
             >
@@ -590,8 +607,59 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             <button
               type="button"
               onMouseEnter={hover}
+              onClick={click(() => onNavigateScreen('FRIENDS'))}
+              className="sm:col-span-2 pixel-btn bg-slate-900/90 hover:bg-slate-800 border-cyan-500/55 text-slate-100 px-3.5 py-2.5 font-pixel text-[11px] flex items-center justify-between cursor-pointer"
+            >
+              <span className="flex items-center gap-2">
+                <UserPlus className="w-3.5 h-3.5 text-cyan-300" />
+                <span>{tr(lang, 'friendsBtn')}</span>
+              </span>
+              {pendingFriendRequestsCount > 0 && (
+                <span className="bg-emerald-600 text-white px-1.5 py-0.5 text-[9px] font-mono-num">
+                  +{pendingFriendRequestsCount}
+                </span>
+              )}
+            </button>
+
+            {(profile?.isCreator || economy.isCreator) && onOpenOwnerPanel ? (
+              <button
+                type="button"
+                onMouseEnter={hover}
+                onClick={click(onOpenOwnerPanel)}
+                className="sm:col-span-2 pixel-btn bg-amber-500 hover:bg-amber-400 border-amber-200 text-slate-950 px-3.5 py-2.5 font-pixel text-[11px] font-bold flex items-center justify-between cursor-pointer shadow-[0_0_20px_rgba(251,191,36,0.35)]"
+              >
+                <span className="flex items-center gap-2">
+                  <Crown className="w-4 h-4 text-slate-950" />
+                  <span>{tr(lang, 'ownerPanelTitle')}</span>
+                </span>
+                <ChevronRight className="w-4 h-4 text-slate-950" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onMouseEnter={hover}
+                onClick={click(() => onNavigateScreen('OWNERS_GIFT'))}
+                className="sm:col-span-2 pixel-btn bg-gradient-to-r from-amber-950/90 to-slate-900 hover:brightness-110 border-amber-400/75 text-amber-200 px-3.5 py-2.5 font-pixel text-[11px] flex items-center justify-between cursor-pointer shadow-[0_0_16px_rgba(251,191,36,0.2)]"
+              >
+                <span className="flex items-center gap-2">
+                  <Gift className="w-4 h-4 text-amber-300" />
+                  <span>{tr(lang, 'ownersGiftBtn')}</span>
+                </span>
+                {(economy.ownerGiftsReceived?.length ?? 0) > 0 ? (
+                  <span className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 text-[9px] font-mono-num">
+                    {economy.ownerGiftsReceived?.length}
+                  </span>
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-amber-300" />
+                )}
+              </button>
+            )}
+
+            <button
+              type="button"
+              onMouseEnter={hover}
               onClick={click(() => onOpenModal('CREDITS'))}
-              className="pixel-btn bg-slate-800 hover:bg-slate-700 text-slate-100 px-3.5 py-2.5 font-pixel text-[11px] text-left cursor-pointer"
+              className="sm:col-span-4 pixel-btn bg-slate-800 hover:bg-slate-700 text-slate-100 px-3.5 py-2.5 font-pixel text-[11px] text-left cursor-pointer"
             >
               {tr(lang, 'credits')}
             </button>
@@ -608,49 +676,127 @@ export const MainMenu: React.FC<MainMenuProps> = ({
 
 interface WorldSelectProps {
   saveData: SaveData;
+  isCreator?: boolean;
   lang?: string | null;
-  isTrialMode?: boolean;
-  onRequireGmail?: () => void;
   onSelectStage: (stageId: string) => void;
+  onSelectChapter2Sector?: (sectorId: string) => void;
   onBack: () => void;
 }
 
 export const WorldSelectScreen: React.FC<WorldSelectProps> = ({
   saveData,
+  isCreator = false,
   lang,
-  isTrialMode = false,
-  onRequireGmail,
   onSelectStage,
+  onSelectChapter2Sector,
   onBack,
 }) => {
   const worldIds: WorldId[] = [1, 2, 3, 4, 5];
+  const ch2Unlocked = Boolean(saveData.chapter2Unlocked || isCreator);
+  const [chapterTab, setChapterTab] = useState<'ch1' | 'ch2'>('ch1');
 
   return (
     <div className="w-full flex-1 bg-[#090d16] text-slate-100 flex flex-col overflow-y-auto p-5 sm:p-8">
       <div className="max-w-5xl w-full mx-auto flex flex-col gap-6">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
           <div>
             <h2 className="font-pixel text-2xl sm:text-3xl text-white">
               {tr(lang, 'worlds')} / {tr(lang, 'levels')}
             </h2>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              {isTrialMode
-                ? 'Bepul sinov: 1-1 va 1-2 darajalar ochiq · Qolgan bosqichlar uchun Gmail ulang'
-                : '5 Dunyo · 15 ta Bosqich · Istalgan ochilgan bosqichni tanlang'}
+              {chapterTab === 'ch2'
+                ? 'Chapter 2 · Astral Void 360° Top-Down Cosmic Sectors'
+                : tr(lang, 'worldsFullSub')}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              audio.playSfx('menuClick');
-              onBack();
-            }}
-            className="pixel-btn bg-slate-800 hover:bg-slate-700 px-4 py-2 font-pixel text-xs text-slate-100 cursor-pointer"
-          >
-            {tr(lang, 'back')}
-          </button>
+          <div className="flex items-center gap-2">
+            {ch2Unlocked && onSelectChapter2Sector && (
+              <div className="flex items-center gap-1 p-1 bg-slate-900 border border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => {
+                    audio.playSfx('menuClick');
+                    setChapterTab('ch1');
+                  }}
+                  className={`px-3 py-1.5 font-pixel text-[10px] cursor-pointer whitespace-nowrap ${
+                    chapterTab === 'ch1' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Chapter 1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    audio.playSfx('menuClick');
+                    setChapterTab('ch2');
+                  }}
+                  className={`px-3 py-1.5 font-pixel text-[10px] cursor-pointer whitespace-nowrap ${
+                    chapterTab === 'ch2' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-cyan-300 hover:text-white'
+                  }`}
+                >
+                  Chapter 2
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                audio.playSfx('menuClick');
+                onBack();
+              }}
+              className="pixel-btn min-h-[44px] bg-slate-800 hover:bg-slate-700 px-4 py-2 font-pixel text-xs text-slate-100 cursor-pointer"
+            >
+              {tr(lang, 'back')}
+            </button>
+          </div>
         </div>
 
+        {chapterTab === 'ch2' && ch2Unlocked && onSelectChapter2Sector ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {CHAPTER2_SECTORS.map((sec) => {
+              const unlocked =
+                isCreator ||
+                (saveData.chapter2UnlockedSectors ?? ['C2-1']).includes(sec.id);
+              const prog = saveData.chapter2Progress?.[sec.id];
+              return (
+                <button
+                  key={sec.id}
+                  type="button"
+                  disabled={!unlocked}
+                  onClick={() => {
+                    audio.unlock();
+                    audio.playSfx('menuClick');
+                    if (unlocked) onSelectChapter2Sector(sec.id);
+                  }}
+                  className={`pixel-panel p-4 text-left flex flex-col justify-between gap-3 ${
+                    unlocked
+                      ? sec.isBossSector
+                        ? 'bg-rose-950/45 hover:bg-rose-950/70 border-rose-500/70 cursor-pointer'
+                        : 'bg-slate-900/90 hover:bg-slate-800/90 border-cyan-500/50 cursor-pointer'
+                      : 'bg-slate-950/60 border-slate-800 opacity-50 cursor-not-allowed'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-pixel text-xs" style={{ color: sec.accentColor }}>
+                      {sec.id} · {sec.isBossSector ? 'FINAL BOSS' : `SECTOR ${sec.sectorNumber}`}
+                    </span>
+                    {!unlocked ? (
+                      <Lock className="w-4 h-4 text-slate-500" />
+                    ) : prog?.completed ? (
+                      <span className="font-pixel text-[10px] text-emerald-400">
+                        {prog.stars ?? 1}★ CLEARED
+                      </span>
+                    ) : null}
+                  </div>
+                  <div>
+                    <h3 className="font-pixel text-base text-white">{sec.name}</h3>
+                    <p className="text-xs text-slate-400 mt-1">{sec.subtitle}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
         <div className="grid grid-cols-1 gap-4">
           {worldIds.map((wid) => {
             const theme = WORLD_THEMES[wid];
@@ -663,7 +809,7 @@ export const WorldSelectScreen: React.FC<WorldSelectProps> = ({
                 <div className="min-w-[200px]">
                   <div className="flex items-center gap-2 text-xs text-slate-400">
                     <span className="font-pixel" style={{ color: theme.accentColor }}>
-                      WORLD {wid}
+                      {tr(lang, 'worldLabel')} {wid}
                     </span>
                     <span aria-hidden="true">·</span>
                     <span>{theme.subtitle}</span>
@@ -673,22 +819,17 @@ export const WorldSelectScreen: React.FC<WorldSelectProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 flex-1">
                   {stages.map((st) => {
-                    const trialAllowed = !isTrialMode || st.id === '1-1' || st.id === '1-2';
-                    const unlocked = trialAllowed && saveData.unlockedStageIds.includes(st.id);
+                    const unlocked = saveData.unlockedStageIds.includes(st.id);
                     const prog = saveData.stageProgress[st.id];
                     const crystals = prog?.crystals ?? [false, false, false];
                     return (
                       <button
                         key={st.id}
                         type="button"
-                        disabled={!unlocked && !(isTrialMode && !trialAllowed)}
+                        disabled={!unlocked}
                         onClick={() => {
                           audio.unlock();
                           audio.playSfx('menuClick');
-                          if (isTrialMode && !trialAllowed) {
-                            onRequireGmail?.();
-                            return;
-                          }
                           if (unlocked) onSelectStage(st.id);
                         }}
                         className={`pixel-btn p-3 text-left flex flex-col justify-between gap-2 ${
@@ -696,8 +837,6 @@ export const WorldSelectScreen: React.FC<WorldSelectProps> = ({
                             ? st.isBossStage
                               ? 'bg-rose-950/55 hover:bg-rose-900/60 border-rose-700/70 cursor-pointer'
                               : 'bg-slate-800/90 hover:bg-slate-700/90 cursor-pointer'
-                            : isTrialMode && !trialAllowed
-                            ? 'bg-slate-900/70 border-amber-500/40 hover:border-sky-400/70 opacity-80 cursor-pointer'
                             : 'bg-slate-900/60 opacity-45 cursor-not-allowed'
                         }`}
                       >
@@ -706,10 +845,7 @@ export const WorldSelectScreen: React.FC<WorldSelectProps> = ({
                             {st.isBossStage ? `${wid}-BOSS` : st.id}
                           </span>
                           {!unlocked ? (
-                            <span className="flex items-center gap-1 text-[10px] text-amber-300">
-                              <Lock className="w-3.5 h-3.5 text-slate-400" />
-                              {isTrialMode && !trialAllowed ? 'Gmail' : null}
-                            </span>
+                            <Lock className="w-3.5 h-3.5 text-slate-400" />
                           ) : prog?.completed ? (
                             <span className="font-pixel text-[10px] text-emerald-400">OK</span>
                           ) : null}
@@ -746,6 +882,7 @@ export const WorldSelectScreen: React.FC<WorldSelectProps> = ({
             );
           })}
         </div>
+        )}
       </div>
     </div>
   );
@@ -757,6 +894,7 @@ interface SettingsModalProps {
   onUpdateSettings: (next: GameSettings) => void;
   onOpenLanguage?: () => void;
   onOpenTutorial?: () => void;
+  onOpenProfile?: () => void;
   onResetSave: () => void;
   onClose: () => void;
 }
@@ -767,6 +905,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdateSettings,
   onOpenLanguage,
   onOpenTutorial,
+  onOpenProfile,
   onResetSave,
   onClose,
 }) => {
@@ -808,17 +947,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const controlLabels: { key: keyof KeyBindings; label: string }[] = [
-    { key: 'left', label: 'Left' },
-    { key: 'right', label: 'Right' },
-    { key: 'up', label: 'Up / Climb' },
-    { key: 'down', label: 'Down' },
-    { key: 'jump', label: 'Jump / Double Jump' },
-    { key: 'sprint', label: 'Sprint / Dash' },
-    { key: 'webAttack', label: 'Web Bolt Attack' },
-    { key: 'special', label: 'Special Ability (C Swap)' },
-    { key: 'interact', label: 'Spider House / Shrine (E)' },
-    { key: 'webSwing', label: 'Toggle Web-Swing (Q)' },
-    { key: 'webNet', label: '5-Way Web Burst' },
+    { key: 'left', label: tr(lang, 'keyLeft') },
+    { key: 'right', label: tr(lang, 'keyRight') },
+    { key: 'up', label: tr(lang, 'keyUp') },
+    { key: 'down', label: tr(lang, 'keyDown') },
+    { key: 'jump', label: tr(lang, 'keyJump') },
+    { key: 'sprint', label: tr(lang, 'keySprint') },
+    { key: 'webAttack', label: tr(lang, 'keyWebAttack') },
+    { key: 'special', label: tr(lang, 'keySpecial') },
+    { key: 'interact', label: tr(lang, 'keyInteract') },
+    { key: 'webSwing', label: tr(lang, 'keyWebSwing') },
+    { key: 'webNet', label: tr(lang, 'keyWebNet') },
   ];
 
   return (
@@ -943,8 +1082,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               className="pixel-btn bg-slate-800 px-3 py-2 text-xs text-slate-100"
             >
               <option value="auto">Auto</option>
-              <option value="on">On</option>
-              <option value="off">Off</option>
+              <option value="on">{tr(lang, 'onLabel')}</option>
+              <option value="off">{tr(lang, 'offLabel')}</option>
             </select>
           </div>
 
@@ -961,9 +1100,105 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </div>
 
-        {/* Language Switcher + Tutorial Replay */}
-        {(onOpenLanguage || onOpenTutorial) && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-slate-800 pt-4">
+        {/* Notification Preferences & Accessibility */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-slate-800 pt-4">
+          <div className="bg-slate-900/75 border border-slate-800 p-3 flex flex-col gap-2">
+            <span className="font-pixel text-[10px] text-rose-300">
+              {tr(lang, 'notificationPreferences')}
+            </span>
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="text-slate-300">{tr(lang, 'enableZaiAlerts')}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  audio.playSfx('menuClick');
+                  const nextVal = settings.notificationsEnabled === false;
+                  onUpdateSettings({
+                    ...settings,
+                    notificationsEnabled: nextVal,
+                    dismissedZaiAlertKey: nextVal ? null : settings.dismissedZaiAlertKey,
+                  });
+                }}
+                className={`pixel-btn px-3 py-1 font-pixel text-[10px] cursor-pointer ${
+                  settings.notificationsEnabled !== false
+                    ? 'bg-emerald-600 border-emerald-400 text-white'
+                    : 'bg-slate-800 border-slate-600 text-slate-400'
+                }`}
+              >
+                {settings.notificationsEnabled !== false ? tr(lang, 'onLabel') : tr(lang, 'offLabel')}
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-slate-900/75 border border-slate-800 p-3 flex flex-col gap-2">
+            <span className="font-pixel text-[10px] text-sky-300">
+              {tr(lang, 'accessibilitySection')}
+            </span>
+            <div className="flex flex-col gap-1.5 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-300">{tr(lang, 'reducedMotionLabel')}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    audio.playSfx('menuClick');
+                    onUpdateSettings({ ...settings, reducedMotion: !settings.reducedMotion });
+                  }}
+                  className={`pixel-btn px-2.5 py-0.5 font-pixel text-[9px] cursor-pointer ${
+                    settings.reducedMotion
+                      ? 'bg-sky-600 border-sky-400 text-white'
+                      : 'bg-slate-800 border-slate-600 text-slate-400'
+                  }`}
+                >
+                  {settings.reducedMotion ? tr(lang, 'onLabel') : tr(lang, 'offLabel')}
+                </button>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-300">{tr(lang, 'screenShakeLabel')}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    audio.playSfx('menuClick');
+                    onUpdateSettings({
+                      ...settings,
+                      screenShake: settings.screenShake === false,
+                    });
+                  }}
+                  className={`pixel-btn px-2.5 py-0.5 font-pixel text-[9px] cursor-pointer ${
+                    settings.screenShake !== false
+                      ? 'bg-emerald-600 border-emerald-400 text-white'
+                      : 'bg-slate-800 border-slate-600 text-slate-400'
+                  }`}
+                >
+                  {settings.screenShake !== false ? tr(lang, 'onLabel') : tr(lang, 'offLabel')}
+                </button>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-300">{tr(lang, 'highContrastHudLabel')}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    audio.playSfx('menuClick');
+                    onUpdateSettings({
+                      ...settings,
+                      highContrastHud: !settings.highContrastHud,
+                    });
+                  }}
+                  className={`pixel-btn px-2.5 py-0.5 font-pixel text-[9px] cursor-pointer ${
+                    settings.highContrastHud
+                      ? 'bg-sky-600 border-sky-400 text-white'
+                      : 'bg-slate-800 border-slate-600 text-slate-400'
+                  }`}
+                >
+                  {settings.highContrastHud ? tr(lang, 'onLabel') : tr(lang, 'offLabel')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Language Switcher + Tutorial Replay + Profile & Backup */}
+        {(onOpenLanguage || onOpenTutorial || onOpenProfile) && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-slate-800 pt-4">
             {onOpenLanguage && (
               <button
                 type="button"
@@ -972,14 +1207,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onClose();
                   onOpenLanguage();
                 }}
-                className="pixel-btn bg-slate-900 hover:bg-slate-800 border-sky-500/40 px-3.5 py-2.5 text-xs text-slate-100 flex items-center justify-between cursor-pointer"
+                className="pixel-btn min-h-[44px] bg-slate-900 hover:bg-slate-800 border-sky-500/40 px-3.5 py-2.5 text-xs text-slate-100 flex items-center justify-between cursor-pointer"
               >
                 <span className="flex items-center gap-2">
                   <Globe className="w-4 h-4 text-sky-400" />
                   <span>{tr(lang, 'langButton')}</span>
                 </span>
-                <span className="font-pixel text-[10px] text-sky-300">
-                  {langDef.flag} {langDef.nativeName}
+                <span className="font-pixel text-[10px] text-sky-300 truncate max-w-[90px]">
+                  {langDef.flag} {langDef.code.toUpperCase()}
                 </span>
               </button>
             )}
@@ -991,13 +1226,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onClose();
                   onOpenTutorial();
                 }}
-                className="pixel-btn bg-cyan-950/70 hover:bg-cyan-900/70 border-cyan-400/50 px-3.5 py-2.5 text-xs text-cyan-100 flex items-center justify-between cursor-pointer"
+                className="pixel-btn min-h-[44px] bg-cyan-950/70 hover:bg-cyan-900/70 border-cyan-400/50 px-3.5 py-2.5 text-xs text-cyan-100 flex items-center justify-between cursor-pointer"
               >
                 <span className="flex items-center gap-2">
                   <BookOpen className="w-4 h-4 text-cyan-300" />
                   <span>{tr(lang, 'tutReplayFromMenu')}</span>
                 </span>
                 <ChevronRight className="w-4 h-4 text-cyan-300" />
+              </button>
+            )}
+            {onOpenProfile && (
+              <button
+                type="button"
+                onClick={() => {
+                  audio.playSfx('menuClick');
+                  onClose();
+                  onOpenProfile();
+                }}
+                className="pixel-btn min-h-[44px] bg-emerald-950/70 hover:bg-emerald-900/70 border-emerald-400/50 px-3.5 py-2.5 text-xs text-emerald-100 flex items-center justify-between cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <User className="w-4 h-4 text-emerald-300" />
+                  <span>{tr(lang, 'editProfileBtn')}</span>
+                </span>
+                <ChevronRight className="w-4 h-4 text-emerald-300" />
               </button>
             )}
           </div>
@@ -1148,9 +1400,7 @@ export const CreditsModal: React.FC<{
       </div>
       <div className="flex flex-col gap-3 text-sm text-slate-300">
         <p className="font-pixel text-sky-400">SPIDER SPIKEY — WINTER & ZAI LIMITED EDITION</p>
-        <p>
-          5 worlds, 15 levels, adaptive E Spider House shelters, toggle Q web-swing physics, 27 Web Designs, Player XP Levels 1-100, and ZAI Limited Events!
-        </p>
+        <p>{tr(lang, 'creditsBody')}</p>
         <div className="border-t border-slate-800 pt-3 text-xs text-slate-400 flex flex-col gap-1.5">
           <span>Engine · 60Hz AABB + Raycasted Rope & Spider House Physics</span>
           <span>Graphics · 480×270 Pixel Canvas · 12 Live Seasons + Winter Wonderland</span>
@@ -1247,14 +1497,14 @@ export const StageClearModal: React.FC<{
             <span className="font-mono-num font-bold text-cyan-300">+{xpEarned} XP</span>
           </div>
           <div className="bg-slate-900/80 border border-slate-800 p-3 flex items-center justify-between">
-            <span className="text-slate-400">Time / Score</span>
+            <span className="text-slate-400">{tr(lang, 'timeScore')}</span>
             <span className="font-mono-num font-bold text-white">
               {summary.timeSec}s · +{summary.scoreEarned}
             </span>
           </div>
           {!summary.isBossStage && (
             <div className="bg-slate-900/80 border border-slate-800 p-3 flex items-center justify-between">
-              <span className="text-slate-400">Crystals</span>
+              <span className="text-slate-400">{tr(lang, 'crystalsLabel')}</span>
               <div className="flex items-center gap-1">
                 {summary.crystalsCollected.map((got, idx) => (
                   <Gem
@@ -1271,7 +1521,7 @@ export const StageClearModal: React.FC<{
 
         {summary.noDamageBonus && (
           <div className="text-center text-xs text-amber-300 font-pixel">
-            NO DAMAGE BONUS +500!
+            {tr(lang, 'noDamageBonus')}
           </div>
         )}
 
@@ -1331,12 +1581,12 @@ export const GameOverModal: React.FC<{
       <div>
         <h2 className="font-pixel text-3xl text-rose-500">{tr(lang, 'gameOver')}</h2>
         <p className="text-xs text-slate-400 mt-1.5">
-          Spikey barcha jonlarini yo‘qotdi, lekin Weboria sizga muhtoj!
+          {tr(lang, 'gameOverSub')}
         </p>
       </div>
       <div className="flex justify-center gap-6 text-xs font-mono-num">
-        <span className="text-slate-300">Score: {score}</span>
-        <span className="text-amber-400">Spikey Coins: +{coins}</span>
+        <span className="text-slate-300">{tr(lang, 'scoreLabel')}: {score}</span>
+        <span className="text-amber-400">{tr(lang, 'spikeyCoins')}: +{coins}</span>
       </div>
       <div className="flex flex-col gap-2.5">
         <button
@@ -1368,10 +1618,22 @@ export const GameOverModal: React.FC<{
 export const CampaignVictoryScreen: React.FC<{
   saveData: SaveData;
   lang?: string | null;
+  onAcceptChapter2: (rating: 'awesome' | 'challenging' | 'hard') => void;
+  onDeclineChapter2: (rating: 'awesome' | 'challenging' | 'hard') => void;
   onPlayAgain: () => void;
   onWorldSelect: () => void;
   onMenu: () => void;
-}> = ({ saveData, lang, onPlayAgain, onWorldSelect, onMenu }) => {
+}> = ({
+  saveData,
+  lang,
+  onAcceptChapter2,
+  onDeclineChapter2,
+  onPlayAgain,
+  onWorldSelect,
+  onMenu,
+}) => {
+  const [surveyOpen, setSurveyOpen] = useState(true);
+
   const totalCrystals = Object.values(saveData.stageProgress).reduce(
     (acc, p) => acc + p.crystals.filter(Boolean).length,
     0
@@ -1382,22 +1644,22 @@ export const CampaignVictoryScreen: React.FC<{
       <div className="pixel-panel w-full max-w-lg p-7 flex flex-col gap-5 text-center border-purple-500/70">
         <div className="flex flex-col items-center gap-2">
           <Trophy className="w-10 h-10 text-amber-400" />
-          <div className="font-pixel text-xs text-purple-300">O‘RGIMCHAK KRISTALLI QUTQARILDI!</div>
+          <div className="font-pixel text-xs text-purple-300">{tr(lang, 'campaignHeroBanner')}</div>
           <h2 className="font-pixel text-3xl text-white">{tr(lang, 'victoryTitle')}</h2>
           <p className="text-sm text-slate-300 leading-relaxed">
-            Jasur Spikey Soya O‘rgimchak Qirolini mag‘lub etib, barcha besh dunyoga tinchlik olib keldi.
+            {tr(lang, 'campaignVictoryDesc')}
           </p>
         </div>
 
         <div className="grid grid-cols-3 gap-2.5 text-xs">
           <div className="bg-slate-900/90 border border-slate-800 p-3">
-            <div className="text-slate-400">Score</div>
+            <div className="text-slate-400">{tr(lang, 'scoreLabel')}</div>
             <div className="font-mono-num font-bold text-white text-base mt-0.5">
               {saveData.totalScore}
             </div>
           </div>
           <div className="bg-slate-900/90 border border-slate-800 p-3">
-            <div className="text-slate-400">Crystals</div>
+            <div className="text-slate-400">{tr(lang, 'crystalsLabel')}</div>
             <div className="font-mono-num font-bold text-purple-300 text-base mt-0.5">
               {totalCrystals}/30
             </div>
@@ -1411,6 +1673,13 @@ export const CampaignVictoryScreen: React.FC<{
         </div>
 
         <div className="flex flex-col gap-2.5">
+          <button
+            type="button"
+            onClick={() => setSurveyOpen(true)}
+            className="pixel-btn bg-cyan-500 hover:bg-cyan-400 border-cyan-200 py-3 font-pixel text-xs text-slate-950 font-bold cursor-pointer"
+          >
+            Proceed to Chapter 2 · Astral Void
+          </button>
           <button
             type="button"
             onClick={onPlayAgain}
@@ -1436,76 +1705,19 @@ export const CampaignVictoryScreen: React.FC<{
           </div>
         </div>
       </div>
+
+      {surveyOpen && (
+        <Chapter2SurveyModal
+          onAcceptChapter2={(rating) => {
+            setSurveyOpen(false);
+            onAcceptChapter2(rating);
+          }}
+          onDeclineChapter2={(rating) => {
+            setSurveyOpen(false);
+            onDeclineChapter2(rating);
+          }}
+        />
+      )}
     </div>
   );
 };
-
-export const TrialGateModal: React.FC<{
-  summary: StageClearSummary | null;
-  lang?: string | null;
-  onConnectGmail: () => void;
-  onReplay: () => void;
-  onMenu: () => void;
-}> = ({ summary, lang, onConnectGmail, onReplay, onMenu }) => (
-  <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4">
-    <div className="pixel-panel w-full max-w-md p-6 flex flex-col gap-5 border-amber-400/70 text-center">
-      <div className="flex flex-col items-center gap-2 border-b border-slate-800 pb-4">
-        <Mail className="w-8 h-8 text-sky-400" />
-        <div className="font-pixel text-[11px] text-amber-300">
-          FREE TRIAL (2/2 STAGES)
-        </div>
-        <h2 className="font-pixel text-xl sm:text-2xl text-white leading-snug">
-          {tr(lang, 'trialGateHeading')}
-        </h2>
-        <p className="text-xs text-slate-300 leading-relaxed">
-          {tr(lang, 'trialGateBody')}
-        </p>
-      </div>
-
-      {summary && (
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <div className="bg-slate-900/80 border border-slate-800 p-2.5">
-            <div className="text-slate-400">Coins</div>
-            <div className="font-mono-num font-bold text-amber-400">+{summary.coinsEarned}</div>
-          </div>
-          <div className="bg-slate-900/80 border border-slate-800 p-2.5">
-            <div className="text-slate-400">Score</div>
-            <div className="font-mono-num font-bold text-white">+{summary.scoreEarned}</div>
-          </div>
-          <div className="bg-slate-900/80 border border-slate-800 p-2.5">
-            <div className="text-slate-400">Time</div>
-            <div className="font-mono-num font-bold text-sky-300">{summary.timeSec}s</div>
-          </div>
-        </div>
-      )}
-
-      <div className="flex flex-col gap-2.5">
-        <button
-          type="button"
-          onClick={onConnectGmail}
-          className="pixel-btn w-full bg-sky-600 hover:bg-sky-500 py-3.5 font-pixel text-xs text-white flex items-center justify-center gap-2 cursor-pointer"
-        >
-          <Mail className="w-4 h-4" />
-          <span>CONNECT YOUR GMAIL</span>
-        </button>
-
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={onReplay}
-            className="pixel-btn bg-slate-800 hover:bg-slate-700 py-2.5 font-pixel text-[11px] text-slate-200 cursor-pointer"
-          >
-            1-2 REPLAY
-          </button>
-          <button
-            type="button"
-            onClick={onMenu}
-            className="pixel-btn bg-slate-900 hover:bg-slate-800 py-2.5 font-pixel text-[11px] text-slate-300 cursor-pointer"
-          >
-            {tr(lang, 'mainMenu')}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-);

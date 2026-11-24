@@ -1,9 +1,12 @@
 import { CASE_MAP, CaseSpinResult, buildCaseRouletteReel, rollCaseOutcome } from './cases';
 import {
   LiveCalendarInfo,
+  MAX_SEASON_LEVEL,
   buildSeasonPassLevels,
   getLiveCalendarInfo,
   getSeasonLevelFromXp,
+  getSeasonLevelSkipCost,
+  getXpForLevel,
 } from './seasons';
 import { ALL_SKINS, RARITY_META, getSkinById, getSkinMinLevel, starterColorToSkinId } from './skins';
 import {
@@ -11,16 +14,17 @@ import {
   CaseType,
   EconomyData,
   EconomyTransaction,
+  OwnerGiftRecord,
   SpiderColorId,
 } from './types';
 import { ALL_WEB_DESIGNS, getWebDesignById } from './webDesigns';
-import { isZaiEventWindowOpen } from './zaiCollection';
+import { isZaiCaseAvailableNow, isZaiItemAvailableNow } from './zaiCollection';
 
-export const MAX_PLAYER_LEVEL = 100;
+export const MAX_PLAYER_LEVEL = 103;
 
 export function getPlayerXpForNextLevel(level: number): number {
   const lvl = Math.max(1, Math.min(MAX_PLAYER_LEVEL, Math.floor(level)));
-  return 100 + (lvl - 1) * 65;
+  return 260 + (lvl - 1) * 165 + Math.floor(Math.pow(lvl - 1, 1.35) * 22);
 }
 
 export function getPlayerLevelProgress(totalXp: number): {
@@ -146,145 +150,252 @@ export const SPECIAL_ITEMS_META: Record<string, SpecialItemMeta> = {
     id: 'xp_boost',
     nameUz: 'Sezon XP Kuchaytirgich',
     descriptionUz: 'Foydalanilganda darhol +150 Sezon XP beradi.',
-    priceCoins: 350,
+    priceCoins: 950,
   },
   lucky_clover: {
     id: 'lucky_clover',
     nameUz: 'Oltin Omad Nishoni',
     descriptionUz: 'Inventardagi noyob kolleksiya buyumi (+200 tanga qiymat).',
-    priceCoins: 500,
+    priceCoins: 1300,
   },
   season_token: {
     id: 'season_token',
     nameUz: 'Bayram Nishoni',
     descriptionUz: 'Bayram tadbirlaridan olinadigan maxsus medal.',
-    priceCoins: 400,
+    priceCoins: 1100,
   },
 };
+
+export type MissionDifficulty = 'easy' | 'medium' | 'hard' | 'expert';
+
+export type MissionMetric =
+  | 'stages_cleared'
+  | 'enemies_defeated'
+  | 'coins_collected'
+  | 'crystals_collected'
+  | 'bosses_defeated'
+  | 'cases_opened'
+  | 'houses_built'
+  | 'web_swings'
+  | 'no_damage_clears'
+  | 'fast_clears'
+  | 'full_crystal_clears'
+  | 'secrets_found'
+  | 'no_damage_bosses'
+  | 'trades_completed';
 
 export interface MissionDef {
   id: string;
   period: 'daily' | 'weekly' | 'seasonal';
+  difficulty: MissionDifficulty;
   titleUz: string;
   descriptionUz: string;
   target: number;
   rewardCoins: number;
   rewardXp: number;
-  metric: 'stages_cleared' | 'enemies_defeated' | 'coins_collected' | 'crystals_collected' | 'bosses_defeated' | 'cases_opened';
+  metric: MissionMetric;
 }
 
 export const ALL_MISSIONS: MissionDef[] = [
-  // Daily
+  // Daily (Harder 3x-4.5x targets)
   {
     id: 'd_stage_1',
     period: 'daily',
+    difficulty: 'medium',
     titleUz: 'Kunlik Sarguzasht',
-    descriptionUz: 'Bugun 1 ta bosqichni muvaffaqiyatli yakunlang.',
-    target: 1,
-    rewardCoins: 150,
-    rewardXp: 80,
+    descriptionUz: 'Bugun 4 ta bosqichni muvaffaqiyatli yakunlang.',
+    target: 4,
+    rewardCoins: 1800,
+    rewardXp: 160,
     metric: 'stages_cleared',
+  },
+  {
+    id: 'd_houses_3',
+    period: 'daily',
+    difficulty: 'medium',
+    titleUz: 'Ipak Me’mori (E)',
+    descriptionUz: 'Bugun E tugmasi bilan 12 ta o‘rgimchak uyini quring.',
+    target: 12,
+    rewardCoins: 1600,
+    rewardXp: 150,
+    metric: 'houses_built',
+  },
+  {
+    id: 'd_swings_8',
+    period: 'daily',
+    difficulty: 'medium',
+    titleUz: 'Osmon Tebranishi (Q)',
+    descriptionUz: 'Q tugmasi bilan 32 marta to‘rga osilib uching.',
+    target: 32,
+    rewardCoins: 1700,
+    rewardXp: 160,
+    metric: 'web_swings',
   },
   {
     id: 'd_enemies_10',
     period: 'daily',
+    difficulty: 'hard',
     titleUz: 'Zararkunanda Ovchisi',
-    descriptionUz: 'Bugun 10 ta dushmanni mag‘lub eting.',
-    target: 10,
-    rewardCoins: 120,
-    rewardXp: 70,
+    descriptionUz: 'Bugun 45 ta dushmanni mag‘lub eting.',
+    target: 45,
+    rewardCoins: 2100,
+    rewardXp: 190,
     metric: 'enemies_defeated',
   },
   {
     id: 'd_coins_40',
     period: 'daily',
+    difficulty: 'hard',
     titleUz: 'Tanga Teruvchi',
-    descriptionUz: 'Bosqichlarda 40 ta tanga yig‘ing.',
-    target: 40,
-    rewardCoins: 140,
-    rewardXp: 75,
+    descriptionUz: 'Bosqichlarda 180 ta tanga yig‘ing.',
+    target: 180,
+    rewardCoins: 2400,
+    rewardXp: 200,
     metric: 'coins_collected',
   },
   {
     id: 'd_case_1',
     period: 'daily',
+    difficulty: 'medium',
     titleUz: 'Omad Sandig‘i',
-    descriptionUz: 'Bugun kamida 1 ta keys oching.',
-    target: 1,
-    rewardCoins: 180,
-    rewardXp: 90,
+    descriptionUz: 'Bugun kamida 3 ta keys oching.',
+    target: 3,
+    rewardCoins: 2200,
+    rewardXp: 180,
     metric: 'cases_opened',
   },
-  // Weekly
+  // Weekly (Hard & Expert 3x-5x targets)
   {
     id: 'w_stages_5',
     period: 'weekly',
+    difficulty: 'hard',
     titleUz: 'Haftalik Qahramon',
-    descriptionUz: 'Ushbu haftada 5 ta bosqichni yakunlang.',
-    target: 5,
-    rewardCoins: 500,
-    rewardXp: 250,
+    descriptionUz: 'Ushbu haftada 20 ta bosqichni yakunlang.',
+    target: 20,
+    rewardCoins: 6500,
+    rewardXp: 500,
     metric: 'stages_cleared',
+  },
+  {
+    id: 'w_fast_2',
+    period: 'weekly',
+    difficulty: 'expert',
+    titleUz: 'Chaqmoq Tezligi',
+    descriptionUz: '8 ta bosqichni 90 soniyadan tezroq yakunlang.',
+    target: 8,
+    rewardCoins: 9000,
+    rewardXp: 650,
+    metric: 'fast_clears',
+  },
+  {
+    id: 'w_nodmg_2',
+    period: 'weekly',
+    difficulty: 'expert',
+    titleUz: 'Betakror Himoya',
+    descriptionUz: '6 ta bosqichni zarar olmay (No-Damage) yakunlang.',
+    target: 6,
+    rewardCoins: 11000,
+    rewardXp: 750,
+    metric: 'no_damage_clears',
+  },
+  {
+    id: 'w_all_crystals_2',
+    period: 'weekly',
+    difficulty: 'expert',
+    titleUz: 'Mukammal Kristallchi',
+    descriptionUz: '8 ta bosqichda barcha 3 ta kristallni yig‘ib o‘ting.',
+    target: 8,
+    rewardCoins: 8500,
+    rewardXp: 620,
+    metric: 'full_crystal_clears',
   },
   {
     id: 'w_boss_1',
     period: 'weekly',
+    difficulty: 'hard',
     titleUz: 'Boss Yenguvchi',
-    descriptionUz: 'Hafta davomida 1 ta dunyo bossini mag‘lub eting.',
-    target: 1,
-    rewardCoins: 650,
-    rewardXp: 300,
+    descriptionUz: 'Hafta davomida 4 ta dunyo bossini mag‘lub eting.',
+    target: 4,
+    rewardCoins: 9500,
+    rewardXp: 600,
     metric: 'bosses_defeated',
   },
   {
     id: 'w_crystals_3',
     period: 'weekly',
+    difficulty: 'hard',
     titleUz: 'Kristall Yig‘uvchi',
-    descriptionUz: 'Hafta davomida 3 ta Sehrli Kristall toping.',
-    target: 3,
-    rewardCoins: 450,
-    rewardXp: 220,
+    descriptionUz: 'Hafta davomida 15 ta Sehrli Kristall toping.',
+    target: 15,
+    rewardCoins: 6000,
+    rewardXp: 460,
     metric: 'crystals_collected',
   },
-  // Seasonal
+  // Seasonal (Expert 3x-4x targets)
   {
     id: 's_stages_12',
     period: 'seasonal',
+    difficulty: 'expert',
     titleUz: 'Sezon Fathchisi',
-    descriptionUz: 'Joriy sezonda 12 ta bosqichni yakunlang.',
-    target: 12,
-    rewardCoins: 1200,
-    rewardXp: 600,
+    descriptionUz: 'Joriy sezonda 45 ta bosqichni yakunlang.',
+    target: 45,
+    rewardCoins: 16000,
+    rewardXp: 1100,
     metric: 'stages_cleared',
+  },
+  {
+    id: 's_secrets_5',
+    period: 'seasonal',
+    difficulty: 'expert',
+    titleUz: 'Maxfiy Xona Ustasi',
+    descriptionUz: 'Joriy sezonda 20 ta yashirin devor yoki sandiq toping.',
+    target: 20,
+    rewardCoins: 20000,
+    rewardXp: 1400,
+    metric: 'secrets_found',
+  },
+  {
+    id: 's_nodmg_boss_1',
+    period: 'seasonal',
+    difficulty: 'expert',
+    titleUz: 'Mutlaq Chempion (Expert)',
+    descriptionUz: '3 ta Boss jangini zarar olmay (No-Damage) yuting!',
+    target: 3,
+    rewardCoins: 25000,
+    rewardXp: 1800,
+    metric: 'no_damage_bosses',
   },
   {
     id: 's_bosses_3',
     period: 'seasonal',
+    difficulty: 'expert',
     titleUz: 'Sezon Bosslari Qiroli',
-    descriptionUz: 'Joriy sezonda 3 ta boss jangida g‘alaba qozoning.',
-    target: 3,
-    rewardCoins: 1500,
-    rewardXp: 750,
+    descriptionUz: 'Joriy sezonda 12 ta boss jangida g‘alaba qozoning.',
+    target: 12,
+    rewardCoins: 18000,
+    rewardXp: 1300,
     metric: 'bosses_defeated',
   },
   {
     id: 's_cases_5',
     period: 'seasonal',
+    difficulty: 'expert',
     titleUz: 'Kolleksioner Ruhi',
-    descriptionUz: 'Joriy sezonda 5 ta keys oching.',
-    target: 5,
-    rewardCoins: 1000,
-    rewardXp: 500,
+    descriptionUz: 'Joriy sezonda 20 ta keys oching.',
+    target: 20,
+    rewardCoins: 15000,
+    rewardXp: 1000,
     metric: 'cases_opened',
   },
   {
     id: 's_coins_500',
     period: 'seasonal',
+    difficulty: 'expert',
     titleUz: 'Sezon Boyligi',
-    descriptionUz: 'Bosqichlardan 500 ta tanga yig‘ing.',
-    target: 500,
-    rewardCoins: 1200,
-    rewardXp: 600,
+    descriptionUz: 'Bosqichlardan 2,000 ta tanga yig‘ing.',
+    target: 2000,
+    rewardCoins: 18000,
+    rewardXp: 1200,
     metric: 'coins_collected',
   },
 ];
@@ -417,7 +528,7 @@ export function createInitialEconomyData(
     equippedSkin: starterSkin,
     ownedSkins,
     ownedCases: {
-      common: 1, // Starter welcome Common Case so players can immediately experience opening a case!
+      common: 2, // Welcome bonus: exactly 2 Free Common Cases for every new account!
       uncommon: 0,
       rare: 0,
       epic: 0,
@@ -437,6 +548,7 @@ export function createInitialEconomyData(
     seasonMonthKey: cal.monthKey,
     seasonXp: 0,
     claimedSeasonLevels: [],
+    claimedBonusSeasonLevels: [],
     dailyStreak: 0,
     claimedDailyDays: [],
     lastDailyClaimDate: '',
@@ -449,14 +561,87 @@ export function createInitialEconomyData(
     mythicsFoundTotal: 0,
     skinsSoldTotal: 0,
     tradesCompletedTotal: 0,
+    noDamageStreak: 0,
     unlockedEconomyAchievements: [],
+    unlockedAvatars: [],
+    unlockedProfileFrames: ['frame_winter_steel'],
+    equippedProfileFrame: 'frame_winter_steel',
     transactions: [],
     processedTxIds: [],
+    ownerGiftsReceived: [],
     playerXp: 0,
     playerLevel: 1,
     equippedWebDesign: 'classic_white',
     ownedWebDesigns: { classic_white: 1 },
     selectedLanguage: 'en',
+    isCreator: false,
+  };
+}
+
+export function createCreatorVipEconomyData(
+  cal: LiveCalendarInfo = getLiveCalendarInfo()
+): EconomyData {
+  const base = createInitialEconomyData('creator_admin', 999999999, 'classic', cal);
+  const allSkins: Record<string, number> = {};
+  for (const s of ALL_SKINS) {
+    allSkins[s.id] = 99;
+  }
+  const allWebs: Record<string, number> = {};
+  for (const w of ALL_WEB_DESIGNS) {
+    allWebs[w.id] = 99;
+  }
+  return {
+    ...base,
+    ownerId: 'creator_admin',
+    isCreator: true,
+    spikeyCoins: 999999999,
+    equippedSkin: 'zai_event_shadow',
+    ownedSkins: allSkins,
+    equippedWebDesign: 'cosmic_galaxy_web',
+    ownedWebDesigns: allWebs,
+    ownedCases: {
+      common: 99,
+      uncommon: 99,
+      rare: 99,
+      epic: 99,
+      legendary: 99,
+      mythic: 99,
+      seasonal: 99,
+      zai_monthly: 99,
+      zai_summer: 99,
+      zai_starfall: 99,
+      zai_shadow: 99,
+    },
+    specialItems: {
+      xp_boost: 99,
+      lucky_clover: 99,
+      season_token: 99,
+    },
+    seasonXp: getXpForLevel(MAX_SEASON_LEVEL),
+    playerXp: 2500000,
+    playerLevel: MAX_PLAYER_LEVEL,
+    unlockedAvatars: [
+      'av_classic_spikey',
+      'av_emerald_spikey',
+      'av_cobalt_frost',
+      'av_amethyst_king',
+      'av_crimson_spark',
+      'av_neon_cyber',
+      'av_shadow_ninja',
+      'av_flame_blaze',
+      'av_winter_frost_king',
+      'av_santa_holiday',
+      'av_zai_crystal_crown',
+      'av_aurora_mythic',
+    ],
+    unlockedProfileFrames: [
+      'frame_winter_steel',
+      'frame_emerald_silk',
+      'frame_amethyst_prism',
+      'frame_gold_monarch',
+      'frame_zai_neon',
+    ],
+    equippedProfileFrame: 'frame_zai_neon',
   };
 }
 
@@ -468,19 +653,35 @@ export function normalizeEconomyData(
   const base = createInitialEconomyData(ownerId, 0, 'classic', cal);
   if (!raw) return base;
 
-  const rawXp = Math.max(0, Math.floor(raw.playerXp ?? 0));
+  const isCreator = Boolean(raw.isCreator || ownerId === 'creator_admin');
+  const rawXp = isCreator ? Math.max(2500000, Math.floor(raw.playerXp ?? 0)) : Math.max(0, Math.floor(raw.playerXp ?? 0));
   const derivedLevel = getPlayerLevelProgress(rawXp).level;
+
+  const ownedSkins: Record<string, number> = { classic: 1, ...(raw.ownedSkins ?? {}) };
+  const ownedWebDesigns: Record<string, number> = { classic_white: 1, ...(raw.ownedWebDesigns ?? {}) };
+  if (isCreator) {
+    for (const s of ALL_SKINS) ownedSkins[s.id] = Math.max(1, ownedSkins[s.id] ?? 99);
+    for (const w of ALL_WEB_DESIGNS) ownedWebDesigns[w.id] = Math.max(1, ownedWebDesigns[w.id] ?? 99);
+  }
 
   const merged: EconomyData = {
     ...base,
     ...raw,
     ownerId: raw.ownerId || ownerId,
-    spikeyCoins: Math.max(0, Math.min(50000000, Math.floor(raw.spikeyCoins ?? 0))),
+    isCreator,
+    spikeyCoins: isCreator
+      ? 999999999
+      : Number.isFinite(Number(raw.spikeyCoins))
+      ? Math.max(0, Math.floor(Number(raw.spikeyCoins)))
+      : 0,
     equippedSkin: raw.equippedSkin || 'classic',
-    ownedSkins: { classic: 1, ...(raw.ownedSkins ?? {}) },
+    ownedSkins,
     ownedCases: { ...base.ownedCases, ...(raw.ownedCases ?? {}) },
     specialItems: { ...base.specialItems, ...(raw.specialItems ?? {}) },
     claimedSeasonLevels: Array.isArray(raw.claimedSeasonLevels) ? [...raw.claimedSeasonLevels] : [],
+    claimedBonusSeasonLevels: Array.isArray(raw.claimedBonusSeasonLevels)
+      ? [...raw.claimedBonusSeasonLevels]
+      : [],
     claimedDailyDays: Array.isArray(raw.claimedDailyDays) ? [...raw.claimedDailyDays] : [],
     missionProgress: { ...(raw.missionProgress ?? {}) },
     claimedMissions: Array.isArray(raw.claimedMissions) ? [...raw.claimedMissions] : [],
@@ -488,12 +689,21 @@ export function normalizeEconomyData(
     unlockedEconomyAchievements: Array.isArray(raw.unlockedEconomyAchievements)
       ? [...raw.unlockedEconomyAchievements]
       : [],
+    unlockedAvatars: Array.isArray(raw.unlockedAvatars) ? [...raw.unlockedAvatars] : [],
+    unlockedProfileFrames: Array.isArray(raw.unlockedProfileFrames) && raw.unlockedProfileFrames.length > 0
+      ? [...raw.unlockedProfileFrames]
+      : ['frame_winter_steel'],
+    equippedProfileFrame: raw.equippedProfileFrame || 'frame_winter_steel',
+    noDamageStreak: Math.max(0, Math.floor(raw.noDamageStreak ?? 0)),
     transactions: Array.isArray(raw.transactions) ? raw.transactions.slice(0, 40) : [],
     processedTxIds: Array.isArray(raw.processedTxIds) ? raw.processedTxIds.slice(-120) : [],
+    ownerGiftsReceived: Array.isArray(raw.ownerGiftsReceived)
+      ? [...raw.ownerGiftsReceived]
+      : [],
     playerXp: rawXp,
-    playerLevel: Math.max(derivedLevel, Math.floor(raw.playerLevel ?? 1)),
+    playerLevel: derivedLevel,
     equippedWebDesign: raw.equippedWebDesign || 'classic_white',
-    ownedWebDesigns: { classic_white: 1, ...(raw.ownedWebDesigns ?? {}) },
+    ownedWebDesigns,
     selectedLanguage: raw.selectedLanguage || 'en',
   };
 
@@ -502,6 +712,7 @@ export function normalizeEconomyData(
     merged.seasonMonthKey = cal.monthKey;
     merged.seasonXp = 0;
     merged.claimedSeasonLevels = [];
+    merged.claimedBonusSeasonLevels = [];
     for (const m of ALL_MISSIONS.filter((x) => x.period === 'seasonal')) {
       delete merged.missionProgress[`seasonal:${m.metric}`];
       merged.claimedMissions = merged.claimedMissions.filter((id) => id !== m.id);
@@ -639,6 +850,12 @@ export function applyGameplayRewards(
     enemiesDefeated: number;
     bossDefeated: boolean;
     stageCompleted: boolean;
+    housesBuiltCount?: number;
+    webSwingsCount?: number;
+    secretsFoundCount?: number;
+    noDamage?: boolean;
+    timeSec?: number;
+    allCrystals?: boolean;
   },
   cal = getLiveCalendarInfo()
 ): { next: EconomyData; newlyAchievements: string[]; xpEarned: number } {
@@ -648,9 +865,11 @@ export function applyGameplayRewards(
   }
 
   let xpEarned = 0;
-  if (input.stageCompleted) xpEarned += input.bossDefeated ? 140 : 75;
+  if (input.stageCompleted) xpEarned += input.bossDefeated ? 150 : 80;
   xpEarned += input.crystalsFound * 25;
   xpEarned += Math.min(60, input.enemiesDefeated * 4);
+  if (input.noDamage && input.stageCompleted) xpEarned += 45;
+  if (input.allCrystals && input.stageCompleted) xpEarned += 35;
 
   if (input.coinsEarned > 0) {
     next.spikeyCoins += input.coinsEarned;
@@ -659,8 +878,12 @@ export function applyGameplayRewards(
     next.processedTxIds = [...next.processedTxIds.slice(-119), input.txId];
   }
 
+  if (input.stageCompleted) {
+    next.noDamageStreak = input.noDamage ? (next.noDamageStreak ?? 0) + 1 : 0;
+  }
+
   next.seasonXp += xpEarned;
-  addPlayerXp(next, xpEarned);
+  addPlayerXp(next, Math.max(1, Math.round(xpEarned * 0.75)));
 
   const bump = (metric: MissionDef['metric'], amount: number) => {
     if (amount <= 0) return;
@@ -671,9 +894,18 @@ export function applyGameplayRewards(
 
   if (input.stageCompleted) bump('stages_cleared', 1);
   if (input.bossDefeated) bump('bosses_defeated', 1);
+  if (input.stageCompleted && input.noDamage) bump('no_damage_clears', 1);
+  if (input.bossDefeated && input.noDamage) bump('no_damage_bosses', 1);
+  if (input.stageCompleted && typeof input.timeSec === 'number' && input.timeSec <= 90) {
+    bump('fast_clears', 1);
+  }
+  if (input.stageCompleted && input.allCrystals) bump('full_crystal_clears', 1);
   bump('coins_collected', input.coinsEarned);
   bump('crystals_collected', input.crystalsFound);
   bump('enemies_defeated', input.enemiesDefeated);
+  bump('houses_built', input.housesBuiltCount ?? 0);
+  bump('web_swings', input.webSwingsCount ?? 0);
+  bump('secrets_found', input.secretsFoundCount ?? 0);
 
   const newlyAchievements = evaluateEconomyAchievements(next);
   return { next, newlyAchievements, xpEarned };
@@ -690,22 +922,28 @@ export function buySkinAction(
   if (!skin || !skin.marketPurchasable) {
     return { ok: false, errorUz: 'Ushbu skin marketda sotuvda emas.', next: prev, newlyAchievements: [] };
   }
-  if (skin.eventId && !isZaiEventWindowOpen(skin.eventId, now)) {
-    return { ok: false, errorUz: `Ushbu ZAI tadbir (${skin.releaseDateLabel ?? ''}) hozir yopiq.`, next: prev, newlyAchievements: [] };
+  if (skin.isZaiLimited && !isZaiItemAvailableNow(skin, now)) {
+    return {
+      ok: false,
+      errorUz: `Ushbu ZAI kolleksiya (${skin.releaseDateLabel ?? ''}) faqat belgilangan sanada ochiladi.`,
+      next: prev,
+      newlyAchievements: [],
+    };
   }
   const reqLevel = getSkinMinLevel(skin);
-  const pLevel = next.playerLevel ?? 1;
-  if (pLevel < reqLevel) {
+  const pLevel = getPlayerLevelProgress(next.playerXp ?? 0).level;
+  if (!next.isCreator && pLevel < reqLevel) {
     return { ok: false, errorUz: `Daraja yetarli emas! Kamida ${reqLevel}-daraja kerak.`, next: prev, newlyAchievements: [] };
   }
-  if (next.spikeyCoins < skin.price) {
+  if (!next.isCreator && next.spikeyCoins < skin.price) {
     return { ok: false, errorUz: 'Spikey Coins yetarli emas!', next: prev, newlyAchievements: [] };
   }
   const txId = `buy_skin_${skinId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  next.spikeyCoins -= skin.price;
+  const cost = next.isCreator ? 0 : skin.price;
+  next.spikeyCoins = Math.max(0, next.spikeyCoins - cost);
   grantSkinCount(next, skinId, 1);
   next.equippedSkin = skinId;
-  appendTx(next, txId, 'spend', -skin.price, `Skin xarid qilindi: ${skin.name}`);
+  appendTx(next, txId, 'spend', -cost, `Skin xarid qilindi: ${skin.name}`);
   const newlyAchievements = evaluateEconomyAchievements(next);
   return { ok: true, next, newlyAchievements };
 }
@@ -721,22 +959,28 @@ export function buyWebDesignAction(
   if (!web || !web.marketPurchasable) {
     return { ok: false, errorUz: 'Ushbu to‘r dizayni sotuvda emas.', next: prev, newlyAchievements: [] };
   }
-  if (web.eventId && !isZaiEventWindowOpen(web.eventId, now)) {
-    return { ok: false, errorUz: `Ushbu ZAI tadbir (${web.releaseDateLabel ?? ''}) hozir yopiq.`, next: prev, newlyAchievements: [] };
+  if (web.isZaiLimited && !isZaiItemAvailableNow(web, now)) {
+    return {
+      ok: false,
+      errorUz: `Ushbu ZAI to‘r (${web.releaseDateLabel ?? ''}) faqat belgilangan sanada ochiladi.`,
+      next: prev,
+      newlyAchievements: [],
+    };
   }
-  const pLevel = next.playerLevel ?? 1;
-  if (pLevel < web.minPlayerLevel) {
+  const pLevel = getPlayerLevelProgress(next.playerXp ?? 0).level;
+  if (!next.isCreator && pLevel < web.minPlayerLevel) {
     return { ok: false, errorUz: `Daraja yetarli emas! Kamida ${web.minPlayerLevel}-daraja kerak.`, next: prev, newlyAchievements: [] };
   }
-  if (next.spikeyCoins < web.price) {
+  if (!next.isCreator && next.spikeyCoins < web.price) {
     return { ok: false, errorUz: 'Spikey Coins yetarli emas!', next: prev, newlyAchievements: [] };
   }
   const txId = `buy_web_${webId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  next.spikeyCoins -= web.price;
+  const cost = next.isCreator ? 0 : web.price;
+  next.spikeyCoins = Math.max(0, next.spikeyCoins - cost);
   next.ownedWebDesigns = { ...(next.ownedWebDesigns ?? { classic_white: 1 }) };
   next.ownedWebDesigns[webId] = (next.ownedWebDesigns[webId] ?? 0) + 1;
   next.equippedWebDesign = webId;
-  appendTx(next, txId, 'spend', -web.price, `To‘r dizayni xarid qilindi: ${web.name}`);
+  appendTx(next, txId, 'spend', -cost, `To‘r dizayni xarid qilindi: ${web.name}`);
   const newlyAchievements = evaluateEconomyAchievements(next);
   return { ok: true, next, newlyAchievements };
 }
@@ -757,7 +1001,7 @@ export function equipWebDesignAction(
 export function canSellWebDesign(economy: EconomyData, webId: string): { eligible: boolean; reasonUz?: string; price: number } {
   const web = getWebDesignById(webId);
   const qty = economy.ownedWebDesigns?.[webId] ?? 0;
-  const sellPrice = web.sellPrice || Math.round(web.price * 0.5);
+  const sellPrice = web.sellPrice || Math.round(web.price * 0.4);
   if (qty <= 0) return { eligible: false, reasonUz: 'Sizda bu to‘r dizayni yo‘q', price: sellPrice };
   if (!web.tradable) return { eligible: false, reasonUz: 'Boshlang‘ich to‘r sotilmaydi', price: sellPrice };
   if (economy.equippedWebDesign === webId && qty <= 1) {
@@ -844,20 +1088,25 @@ export function buyCaseAction(
 ): { ok: boolean; errorUz?: string; next: EconomyData } {
   const next = normalizeEconomyData(structuredClone(prev), prev.ownerId, cal);
   const def = CASE_MAP[caseType];
-  if (def.eventId && !isZaiEventWindowOpen(def.eventId, now)) {
-    return { ok: false, errorUz: `${def.nameEn} tadbiri hozir faol emas!`, next: prev };
+  if (def.isZaiLimited && !isZaiCaseAvailableNow(def, now)) {
+    return {
+      ok: false,
+      errorUz: `${def.nameEn} faqat belgilangan ZAI sanasida sotuvda bo‘ladi!`,
+      next: prev,
+    };
   }
-  const pLevel = next.playerLevel ?? 1;
-  if (def.minPlayerLevel && pLevel < def.minPlayerLevel) {
+  const pLevel = getPlayerLevelProgress(next.playerXp ?? 0).level;
+  if (!next.isCreator && def.minPlayerLevel && pLevel < def.minPlayerLevel) {
     return { ok: false, errorUz: `Kamida ${def.minPlayerLevel}-daraja kerak!`, next: prev };
   }
-  if (next.spikeyCoins < def.price) {
+  if (!next.isCreator && next.spikeyCoins < def.price) {
     return { ok: false, errorUz: 'Spikey Coins yetarli emas!', next: prev };
   }
   const txId = `buy_case_${caseType}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  next.spikeyCoins -= def.price;
+  const cost = next.isCreator ? 0 : def.price;
+  next.spikeyCoins = Math.max(0, next.spikeyCoins - cost);
   next.ownedCases[caseType] = (next.ownedCases[caseType] ?? 0) + 1;
-  appendTx(next, txId, 'spend', -def.price, `Keys xarid qilindi: ${def.nameUz}`);
+  appendTx(next, txId, 'spend', -cost, `Keys xarid qilindi: ${def.nameUz}`);
   return { ok: true, next };
 }
 
@@ -894,7 +1143,7 @@ export function openOwnedCaseAction(
   next.missionProgress['weekly:cases_opened'] = (next.missionProgress['weekly:cases_opened'] ?? 0) + 1;
   next.missionProgress['seasonal:cases_opened'] = (next.missionProgress['seasonal:cases_opened'] ?? 0) + 1;
   next.seasonXp += 45;
-  addPlayerXp(next, 35);
+  addPlayerXp(next, 20);
 
   const txId = `open_case_${caseType}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   appendTx(next, txId, 'case', 0, `${CASE_MAP[caseType].nameUz} ochildi → ${winningSkin.name}`);
@@ -993,12 +1242,44 @@ export function claimDailyRewardAction(
   }
   if (def.xpBonus) {
     next.seasonXp += def.xpBonus;
-    addPlayerXp(next, Math.round(def.xpBonus * 0.75));
+    addPlayerXp(next, Math.round(def.xpBonus * 0.5));
   }
 
   appendTx(next, txId, 'earn', def.coins ?? 0, `Kunlik sovg‘a (${dayNum}-kun): ${def.labelUz}`);
   const newlyAchievements = evaluateEconomyAchievements(next);
   return { ok: true, reward: def, next, newlyAchievements };
+}
+
+function applySlotReward(
+  next: EconomyData,
+  slot: {
+    coins?: number;
+    caseType?: CaseType;
+    skinId?: string;
+    webDesignId?: string;
+    avatarId?: string;
+    profileFrameId?: string;
+    specialItemId?: string;
+  }
+): void {
+  if (slot.coins) next.spikeyCoins += slot.coins;
+  if (slot.caseType) next.ownedCases[slot.caseType] = (next.ownedCases[slot.caseType] ?? 0) + 1;
+  if (slot.skinId) grantSkinCount(next, slot.skinId, 1);
+  if (slot.webDesignId) {
+    next.ownedWebDesigns = { ...(next.ownedWebDesigns ?? { classic_white: 1 }) };
+    next.ownedWebDesigns[slot.webDesignId] = (next.ownedWebDesigns[slot.webDesignId] ?? 0) + 1;
+  }
+  if (slot.avatarId) {
+    const list = next.unlockedAvatars ?? [];
+    if (!list.includes(slot.avatarId)) next.unlockedAvatars = [...list, slot.avatarId];
+  }
+  if (slot.profileFrameId) {
+    const list = next.unlockedProfileFrames ?? ['frame_winter_steel'];
+    if (!list.includes(slot.profileFrameId)) next.unlockedProfileFrames = [...list, slot.profileFrameId];
+  }
+  if (slot.specialItemId) {
+    next.specialItems[slot.specialItemId] = (next.specialItems[slot.specialItemId] ?? 0) + 1;
+  }
 }
 
 export function claimSeasonPassLevelAction(
@@ -1033,16 +1314,51 @@ export function claimSeasonPassLevelAction(
   }
 
   next.claimedSeasonLevels.push(level);
-  if (def.coins) next.spikeyCoins += def.coins;
-  if (def.caseType) next.ownedCases[def.caseType] = (next.ownedCases[def.caseType] ?? 0) + 1;
-  if (def.skinId) grantSkinCount(next, def.skinId, 1);
-  if (def.specialItemId) {
-    next.specialItems[def.specialItemId] = (next.specialItems[def.specialItemId] ?? 0) + 1;
-  }
+  applySlotReward(next, def);
 
   appendTx(next, txId, 'earn', def.coins ?? 0, `Sezon Pass ${level}-daraja: ${def.labelUz}`);
   const newlyAchievements = evaluateEconomyAchievements(next);
   return { ok: true, labelUz: def.labelUz, next, newlyAchievements };
+}
+
+export function claimBonusSeasonPassLevelAction(
+  prev: EconomyData,
+  level: number,
+  cal = getLiveCalendarInfo()
+): {
+  ok: boolean;
+  errorUz?: string;
+  labelUz?: string;
+  next: EconomyData;
+  newlyAchievements: string[];
+} {
+  const next = normalizeEconomyData(structuredClone(prev), prev.ownerId, cal);
+  const currentLevel = getSeasonLevelFromXp(next.seasonXp);
+  if (level > currentLevel) {
+    return { ok: false, errorUz: `Avval ${level}-darajaga yeting!`, next: prev, newlyAchievements: [] };
+  }
+  const claimedBonus = next.claimedBonusSeasonLevels ?? [];
+  if (claimedBonus.includes(level)) {
+    return { ok: false, errorUz: 'Bu bonus daraja sovg‘asi allaqachon olingan.', next: prev, newlyAchievements: [] };
+  }
+
+  const rewards = buildSeasonPassLevels(cal.month);
+  const def = rewards.find((r) => r.level === level);
+  if (!def) {
+    return { ok: false, errorUz: 'Daraja topilmadi.', next: prev, newlyAchievements: [] };
+  }
+
+  const txId = `season_bonus_${cal.monthKey}_lvl${level}`;
+  if (next.processedTxIds.includes(txId)) {
+    return { ok: false, errorUz: 'Takroriy urinish bloklandi.', next: prev, newlyAchievements: [] };
+  }
+
+  next.claimedBonusSeasonLevels = [...claimedBonus, level];
+  applySlotReward(next, def.bonus);
+
+  appendTx(next, txId, 'earn', def.bonus.coins ?? 0, `Sezon Pass Bonus ${level}-daraja: ${def.bonus.labelUz}`);
+  const newlyAchievements = evaluateEconomyAchievements(next);
+  return { ok: true, labelUz: def.bonus.labelUz, next, newlyAchievements };
 }
 
 export function claimMissionAction(
@@ -1075,10 +1391,49 @@ export function claimMissionAction(
   next.claimedMissions.push(missionId);
   next.spikeyCoins += def.rewardCoins;
   next.seasonXp += def.rewardXp;
-  addPlayerXp(next, def.rewardXp);
+  addPlayerXp(next, Math.max(1, Math.round(def.rewardXp * 0.65)));
   appendTx(next, txId, 'earn', def.rewardCoins, `Topshiriq bajarildi: ${def.titleUz}`);
   const newlyAchievements = evaluateEconomyAchievements(next);
   return { ok: true, next, newlyAchievements };
+}
+
+export function buySeasonPassLevelAction(
+  prev: EconomyData,
+  cal = getLiveCalendarInfo()
+): {
+  ok: boolean;
+  errorUz?: string;
+  newLevel?: number;
+  cost?: number;
+  next: EconomyData;
+  newlyAchievements: string[];
+} {
+  const next = normalizeEconomyData(structuredClone(prev), prev.ownerId, cal);
+  const curLevel = getSeasonLevelFromXp(next.seasonXp);
+  if (curLevel >= MAX_SEASON_LEVEL) {
+    return {
+      ok: false,
+      errorUz: `Sezon Pass maksimal ${MAX_SEASON_LEVEL}-darajaga yetgan.`,
+      next: prev,
+      newlyAchievements: [],
+    };
+  }
+  const cost = next.isCreator ? 0 : getSeasonLevelSkipCost(curLevel);
+  if (!next.isCreator && next.spikeyCoins < cost) {
+    return {
+      ok: false,
+      errorUz: `Spikey Coins yetarli emas! (${cost.toLocaleString()} kerak)`,
+      next: prev,
+      newlyAchievements: [],
+    };
+  }
+  const newLevel = curLevel + 1;
+  next.spikeyCoins = Math.max(0, next.spikeyCoins - cost);
+  next.seasonXp = Math.max(next.seasonXp, getXpForLevel(newLevel));
+  const txId = `buy_season_lvl_${cal.monthKey}_${newLevel}_${Date.now()}`;
+  appendTx(next, txId, 'spend', -cost, `Sezon Pass +1 Daraja (${newLevel}-LVL)`);
+  const newlyAchievements = evaluateEconomyAchievements(next);
+  return { ok: true, newLevel, cost, next, newlyAchievements };
 }
 
 export function claimHolidayGiftAction(
@@ -1095,7 +1450,7 @@ export function claimHolidayGiftAction(
   next.ownedCases[cal.season.eventGiftCase] = (next.ownedCases[cal.season.eventGiftCase] ?? 0) + 1;
   next.specialItems.season_token = (next.specialItems.season_token ?? 0) + 1;
   next.seasonXp += 150;
-  addPlayerXp(next, 120);
+  addPlayerXp(next, 75);
   appendTx(
     next,
     `holiday_${cal.monthKey}`,
@@ -1134,4 +1489,131 @@ export function useSpecialItemAction(
   }
   const newlyAchievements = evaluateEconomyAchievements(next);
   return { ok: true, labelUz, next, newlyAchievements };
+}
+
+export function deductFriendGiftAction(
+  prev: EconomyData,
+  input: { coins: number; skinId?: string; webDesignId?: string; recipientName: string },
+  cal = getLiveCalendarInfo()
+): { ok: boolean; errorUz?: string; next: EconomyData } {
+  const next = normalizeEconomyData(structuredClone(prev), prev.ownerId, cal);
+  if (next.isCreator) {
+    return { ok: true, next };
+  }
+  const coins = Math.max(0, Math.floor(input.coins || 0));
+  if (coins > next.spikeyCoins) {
+    return { ok: false, errorUz: 'Spikey Coins yetarli emas!', next: prev };
+  }
+  if (input.skinId) {
+    if (input.skinId === 'classic') {
+      return { ok: false, errorUz: 'Boshlang‘ich skinni yuborib bo‘lmaydi.', next: prev };
+    }
+    const qty = next.ownedSkins[input.skinId] ?? 0;
+    if (qty <= 0) {
+      return { ok: false, errorUz: 'Sizda bu skin mavjud emas.', next: prev };
+    }
+    next.ownedSkins[input.skinId] = qty - 1;
+    if (next.ownedSkins[input.skinId] <= 0) {
+      delete next.ownedSkins[input.skinId];
+      if (next.equippedSkin === input.skinId) next.equippedSkin = 'classic';
+    }
+  }
+  if (input.webDesignId) {
+    if (input.webDesignId === 'classic_white') {
+      return { ok: false, errorUz: 'Boshlang‘ich to‘rni yuborib bo‘lmaydi.', next: prev };
+    }
+    next.ownedWebDesigns = { ...(next.ownedWebDesigns ?? { classic_white: 1 }) };
+    const qty = next.ownedWebDesigns[input.webDesignId] ?? 0;
+    if (qty <= 0) {
+      return { ok: false, errorUz: 'Sizda bu to‘r dizayni mavjud emas.', next: prev };
+    }
+    next.ownedWebDesigns[input.webDesignId] = qty - 1;
+    if (next.ownedWebDesigns[input.webDesignId] <= 0) {
+      delete next.ownedWebDesigns[input.webDesignId];
+      if (next.equippedWebDesign === input.webDesignId) next.equippedWebDesign = 'classic_white';
+    }
+  }
+  if (coins > 0) {
+    next.spikeyCoins -= coins;
+  }
+  const txId = `gift_send_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  appendTx(next, txId, 'trade', -coins, `Do‘stga sovg‘a → ${input.recipientName}`);
+  return { ok: true, next };
+}
+
+export function applyServerGiftsAction(
+  prev: EconomyData,
+  gifts: {
+    giftId: string;
+    fromNickname: string;
+    fromIsAdmin?: boolean;
+    coins: number;
+    skinId?: string;
+    webDesignId?: string;
+    caseType?: string;
+    caseQty?: number;
+    createdAt?: string;
+  }[],
+  cal = getLiveCalendarInfo()
+): { next: EconomyData; appliedCount: number; newlyAchievements: string[] } {
+  const next = normalizeEconomyData(structuredClone(prev), prev.ownerId, cal);
+  let appliedCount = 0;
+
+  for (const g of gifts) {
+    const txId = `server_gift_${g.giftId}`;
+    if (next.processedTxIds.includes(txId)) continue;
+
+    const coins = Math.max(0, Math.floor(g.coins || 0));
+    if (coins > 0 && !next.isCreator) {
+      next.spikeyCoins += coins;
+    }
+    const validSkinId =
+      g.skinId && ALL_SKINS.some((s) => s.id === g.skinId) ? g.skinId : undefined;
+    if (validSkinId) {
+      grantSkinCount(next, validSkinId, 1);
+    }
+    const validWebId =
+      g.webDesignId && ALL_WEB_DESIGNS.some((w) => w.id === g.webDesignId)
+        ? g.webDesignId
+        : undefined;
+    if (validWebId) {
+      next.ownedWebDesigns = { ...(next.ownedWebDesigns ?? { classic_white: 1 }) };
+      next.ownedWebDesigns[validWebId] = (next.ownedWebDesigns[validWebId] ?? 0) + 1;
+    }
+    let validCaseDef: (typeof CASE_MAP)[CaseType] | undefined;
+    let validCaseQty = 0;
+    if (g.caseType && Object.prototype.hasOwnProperty.call(CASE_MAP, g.caseType)) {
+      validCaseDef = CASE_MAP[g.caseType as CaseType];
+      validCaseQty = Math.max(1, Math.min(50, Math.floor(g.caseQty || 1)));
+      next.ownedCases[validCaseDef.type] = (next.ownedCases[validCaseDef.type] ?? 0) + validCaseQty;
+    }
+
+    const isFromAdmin = Boolean(g.fromIsAdmin || g.giftId.startsWith('admin_gift_'));
+    if (isFromAdmin && !next.isCreator) {
+      const existingGifts = next.ownerGiftsReceived ?? [];
+      if (!existingGifts.some((rec) => rec.giftId === g.giftId)) {
+        const record: OwnerGiftRecord = {
+          giftId: g.giftId,
+          coins,
+          skinId: validSkinId,
+          webDesignId: validWebId,
+          caseType: validCaseDef?.type,
+          caseQty: validCaseDef && validCaseQty > 0 ? validCaseQty : undefined,
+          receivedAt: g.createdAt || new Date().toISOString(),
+        };
+        next.ownerGiftsReceived = [record, ...existingGifts].slice(0, 120);
+      }
+    }
+
+    const parts: string[] = [];
+    if (coins > 0) parts.push(`+${coins.toLocaleString()} tanga`);
+    if (validSkinId) parts.push(getSkinById(validSkinId).name);
+    if (validWebId) parts.push(getWebDesignById(validWebId).name);
+    if (validCaseDef && validCaseQty > 0) parts.push(`${validCaseQty}× ${validCaseDef.nameUz}`);
+    appendTx(next, txId, 'earn', coins, `${g.fromNickname} sovg‘asi: ${parts.join(', ')}`);
+    appliedCount += 1;
+  }
+
+  const newlyAchievements = appliedCount > 0 ? evaluateEconomyAchievements(next) : [];
+  return { next, appliedCount, newlyAchievements };
 }

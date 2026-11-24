@@ -35,7 +35,9 @@ interface ZaiWarningBannerProps {
   lang?: string | null;
   compactGameplay?: boolean;
   dismissed: boolean;
+  notificationsEnabled?: boolean;
   onDismiss: () => void;
+  onReopen?: () => void;
   onViewEvent: (eventId: AnnualZaiEventId) => void;
   onExploreCollection: () => void;
 }
@@ -45,16 +47,75 @@ export const ZaiWarningBanner: React.FC<ZaiWarningBannerProps> = ({
   lang,
   compactGameplay = false,
   dismissed,
+  notificationsEnabled = true,
   onDismiss,
+  onReopen,
   onViewEvent,
   onExploreCollection,
 }) => {
   const { phase, status, daysLeftCeil } = snapshot;
-  if (phase === 'none' || dismissed) return null;
+  if (phase === 'none') return null;
 
   const isRelease = phase === 'active_now';
   const isFinalHour = phase === 'warning_1h';
   const isFinalDay = phase === 'warning_24h';
+
+  if (dismissed || !notificationsEnabled) {
+    if (compactGameplay) {
+      return (
+        <div className="pointer-events-none fixed top-1.5 right-3 z-30 hidden sm:flex">
+          <button
+            type="button"
+            onClick={() => {
+              audio.playSfx('menuClick');
+              if (onReopen) onReopen();
+              else onViewEvent(status.event.id);
+            }}
+            className={`pointer-events-auto pixel-btn px-2 py-1 font-pixel text-[9px] flex items-center gap-1.5 cursor-pointer ${
+              isRelease
+                ? 'bg-amber-600/90 border-amber-300 text-slate-950 font-bold'
+                : 'bg-[#3b0612]/90 border-[#ff4d6d] text-rose-100'
+            }`}
+          >
+            <AlertTriangle className="w-3 h-3" />
+            <span>{tr(lang, 'zaiAlertMinimized')}</span>
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="relative z-30 w-full px-3 pt-1.5 sm:px-5 shrink-0">
+        <div
+          className={`border px-3 py-1 flex flex-wrap items-center justify-between gap-2 text-[10px] ${
+            isRelease
+              ? 'bg-[#1d0c04]/95 border-amber-400/80 text-amber-200'
+              : 'bg-[#120307]/95 border-[#ff2b4a]/75 text-rose-100'
+          }`}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertTriangle className={`w-3.5 h-3.5 shrink-0 ${isRelease ? 'text-amber-300' : 'text-[#ff4d6d]'}`} />
+            <span className="font-pixel truncate">
+              {status.event.title} · {isRelease ? tr(lang, 'activeNow') : status.countdownText}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                audio.playSfx('menuClick');
+                if (onReopen) onReopen();
+                else onViewEvent(status.event.id);
+              }}
+              className="pixel-btn bg-slate-900 hover:bg-slate-800 border-slate-600 px-2 py-0.5 font-pixel text-[9px] text-white cursor-pointer"
+            >
+              {tr(lang, 'reopenEventAlert')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const headline = isRelease
     ? tr(lang, 'zaiAvailableNowText', { event: status.event.title })
@@ -188,9 +249,9 @@ export const ZaiWarningBanner: React.FC<ZaiWarningBannerProps> = ({
                   {isRelease
                     ? status.event.title
                     : isFinalHour
-                    ? 'CRITICAL ALERT'
+                    ? tr(lang, 'criticalAlert')
                     : isFinalDay
-                    ? 'FINAL 24H'
+                    ? tr(lang, 'final24hBadge')
                     : tr(lang, 'zaiDaysLeftBadge', { days: daysLeftCeil })}
                 </span>
                 <span className="font-mono-num text-[10px] text-slate-300">
@@ -382,7 +443,7 @@ export const ZaiEventPromoModal: React.FC<ZaiEventPromoModalProps> = ({
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-pixel text-[10px] px-2 py-0.5 bg-[#ff2b4a]/25 border border-[#ff4d6d] text-[#ff8fa3]">
-                  ZAI LIMITED EDITION
+                  {tr(lang, 'zaiEditionBadge')}
                 </span>
                 <span className="font-pixel text-[10px] px-2 py-0.5 bg-slate-900/90 border border-slate-700 text-amber-300">
                   {status.isActive ? tr(lang, 'simAvailableNow') : tr(lang, 'zaiComingSoon')}
@@ -446,7 +507,7 @@ export const ZaiEventPromoModal: React.FC<ZaiEventPromoModalProps> = ({
               {/* Featured Web Design */}
               <div className="pixel-panel bg-slate-950/90 border-[#ff2b4a]/60 p-3.5 flex flex-col items-center text-center gap-2.5">
                 <span className="font-pixel text-[9px] px-2 py-0.5 border border-rose-400 text-rose-200 bg-rose-950/50">
-                  LIMITED WEB DESIGN
+                  {tr(lang, 'limitedWebDesignBadge')}
                 </span>
                 <WebDesignPreviewCanvas webDesignId={exclusiveWeb.id} size="lg" quality="ultra" />
                 <div className="font-pixel text-xs text-white">{exclusiveWeb.name}</div>
@@ -456,7 +517,7 @@ export const ZaiEventPromoModal: React.FC<ZaiEventPromoModalProps> = ({
               {/* Mystery Silhouette Teaser */}
               <div className="pixel-panel bg-slate-950/90 border-purple-500/50 p-3.5 flex flex-col items-center justify-center text-center gap-2.5">
                 <span className="font-pixel text-[9px] px-2 py-0.5 border border-purple-400 text-purple-200 bg-purple-950/50">
-                  SECRET CASE DROP
+                  {tr(lang, 'secretCaseDropBadge')}
                 </span>
                 <div className="w-28 h-24 bg-[#070914] border border-purple-500/40 flex flex-col items-center justify-center">
                   <HelpCircle className="w-10 h-10 text-purple-400 animate-pulse" />
@@ -702,7 +763,7 @@ export const ZaiEventsScreen: React.FC<ZaiEventsScreenProps> = ({
         {/* 12 Monthly ZAI Limited Themes & Live Seasons */}
         <div className="pixel-panel bg-slate-950/90 border-slate-800 p-4">
           <div className="font-pixel text-xs text-sky-300 mb-3">
-            12-MONTH LIVE SEASONS & MONTHLY ZAI THEMES
+            {tr(lang, 'seasons12Title')}
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
             {([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as SeasonMonth[]).map((m) => {

@@ -16,7 +16,10 @@ export type MusicTrack =
   | 'world5'
   | 'boss'
   | 'victory'
-  | 'gameOver';
+  | 'gameOver'
+  | 'ch2Arena'
+  | 'ch2Boss'
+  | 'ch2Victory';
 
 interface TrackPattern {
   bpm: number;
@@ -167,6 +170,30 @@ const TRACKS: Record<Exclude<MusicTrack, 'none'>, TrackPattern> = {
     bassWave: 'sawtooth',
     lead: [64, 0, 63, 0, 62, 0, 60, 59, 57, 0, 0, 0],
     bass: [45, 0, 44, 0, 43, 0, 41, 40, 33, 0, 0, 0],
+  },
+  ch2Arena: {
+    bpm: 138,
+    loop: true,
+    leadWave: 'sawtooth',
+    bassWave: 'square',
+    lead: [69, 72, 76, 81, 79, 76, 72, 0, 67, 71, 74, 79, 76, 74, 71, 0],
+    bass: [33, 33, 45, 33, 36, 36, 48, 36, 31, 31, 43, 31, 35, 35, 47, 35],
+  },
+  ch2Boss: {
+    bpm: 164,
+    loop: true,
+    leadWave: 'square',
+    bassWave: 'sawtooth',
+    lead: [64, 67, 71, 64, 76, 75, 71, 67, 62, 65, 69, 62, 74, 72, 69, 65],
+    bass: [28, 28, 40, 28, 28, 40, 31, 35, 26, 26, 38, 26, 29, 29, 33, 36],
+  },
+  ch2Victory: {
+    bpm: 146,
+    loop: false,
+    leadWave: 'triangle',
+    bassWave: 'sine',
+    lead: [72, 76, 79, 84, 0, 83, 84, 88, 0, 0, 0, 0],
+    bass: [48, 52, 55, 60, 0, 59, 60, 64, 0, 0, 0, 0],
   },
 };
 
@@ -344,6 +371,10 @@ class RetroAudioEngine {
       | 'purchase'
       | 'zaiRelease'
       | 'houseWeave'
+      | 'laserShot'
+      | 'phaseBlink'
+      | 'turretPlace'
+      | 'empBurst'
   ): void {
     const ctx = this.ensureContext();
     if (!ctx || !this.sfxGain || this.sfxVol <= 0.01) return;
@@ -453,6 +484,21 @@ class RetroAudioEngine {
         setTimeout(() => this.triggerTone(783.99, 'sine', 0.22, 0.34, out), 180);
         setTimeout(() => this.triggerTone(1046.5, 'sine', 0.42, 0.38, out), 280);
         setTimeout(() => this.triggerTone(1318.5, 'triangle', 0.48, 0.3, out), 390);
+        break;
+      case 'laserShot':
+        this.triggerTone(980, 'sawtooth', 0.08, 0.2, out, 360);
+        break;
+      case 'phaseBlink':
+        this.triggerNoise(0.08, 0.22);
+        this.triggerTone(620, 'sine', 0.14, 0.26, out, 1240);
+        break;
+      case 'turretPlace':
+        this.triggerTone(420, 'triangle', 0.12, 0.24, out, 840);
+        setTimeout(() => this.triggerTone(840, 'sine', 0.16, 0.22, out), 80);
+        break;
+      case 'empBurst':
+        this.triggerNoise(0.22, 0.3);
+        this.triggerTone(880, 'sawtooth', 0.28, 0.28, out, 180);
         break;
     }
   }

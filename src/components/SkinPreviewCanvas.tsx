@@ -9,6 +9,7 @@ interface SkinPreviewCanvasProps {
   skinId: string;
   size?: 'sm' | 'md' | 'lg';
   anim?: SpikeyAnimState;
+  staticFrame?: boolean;
   className?: string;
 }
 
@@ -16,6 +17,7 @@ export const SkinPreviewCanvas: React.FC<SkinPreviewCanvasProps> = ({
   skinId,
   size = 'md',
   anim = 'idle',
+  staticFrame = false,
   className = '',
 }) => {
   const ref = useRef<HTMLCanvasElement | null>(null);
@@ -26,7 +28,7 @@ export const SkinPreviewCanvas: React.FC<SkinPreviewCanvasProps> = ({
     const start = performance.now();
 
     const draw = (now: number) => {
-      const t = (now - start) / 1000;
+      const t = staticFrame ? 0.35 : (now - start) / 1000;
       const ctx = ref.current?.getContext('2d');
       if (ctx) {
         ctx.imageSmoothingEnabled = false;
@@ -45,15 +47,21 @@ export const SkinPreviewCanvas: React.FC<SkinPreviewCanvasProps> = ({
         ctx.fillRect(6, 34, 44, 1);
         ctx.globalAlpha = 1;
 
-        const facing: 1 | -1 = Math.sin(t * 0.9) > -0.75 ? 1 : -1;
+        const facing: 1 | -1 = staticFrame ? 1 : Math.sin(t * 0.9) > -0.75 ? 1 : -1;
         drawSpikey(ctx, 28, 25, facing, anim, t, [], 0, skinId);
       }
-      raf = requestAnimationFrame(draw);
+      if (!staticFrame) {
+        raf = requestAnimationFrame(draw);
+      }
     };
 
+    if (staticFrame) {
+      draw(start);
+      return;
+    }
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [skinId, anim, skin.glowRgba, skin.webColor]);
+  }, [skinId, anim, staticFrame, skin.glowRgba, skin.webColor]);
 
   const sizeClass =
     size === 'sm' ? 'w-14 h-12' : size === 'lg' ? 'w-28 h-24' : 'w-20 h-16';
@@ -72,6 +80,7 @@ interface WebDesignPreviewCanvasProps {
   webDesignId: string;
   size?: 'sm' | 'md' | 'lg';
   quality?: GraphicsQuality;
+  staticFrame?: boolean;
   className?: string;
 }
 
@@ -79,6 +88,7 @@ export const WebDesignPreviewCanvas: React.FC<WebDesignPreviewCanvasProps> = ({
   webDesignId,
   size = 'md',
   quality = 'high',
+  staticFrame = false,
   className = '',
 }) => {
   const ref = useRef<HTMLCanvasElement | null>(null);
@@ -89,7 +99,7 @@ export const WebDesignPreviewCanvas: React.FC<WebDesignPreviewCanvasProps> = ({
     const start = performance.now();
 
     const draw = (now: number) => {
-      const t = (now - start) / 1000;
+      const t = staticFrame ? 0.5 : (now - start) / 1000;
       const ctx = ref.current?.getContext('2d');
       if (ctx) {
         ctx.imageSmoothingEnabled = false;
@@ -110,12 +120,18 @@ export const WebDesignPreviewCanvas: React.FC<WebDesignPreviewCanvasProps> = ({
         });
         drawStylizedWeb(ctx, 36, 28, anchors, [6, 12, 18, 24], webDesignId, t, quality, 1, true);
       }
-      raf = requestAnimationFrame(draw);
+      if (!staticFrame) {
+        raf = requestAnimationFrame(draw);
+      }
     };
 
+    if (staticFrame) {
+      draw(start);
+      return;
+    }
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [webDesignId, quality, design.primaryHex]);
+  }, [webDesignId, quality, staticFrame, design.primaryHex]);
 
   const sizeClass =
     size === 'sm' ? 'w-14 h-12' : size === 'lg' ? 'w-28 h-24' : 'w-20 h-16';

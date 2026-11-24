@@ -1,25 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  GoogleAuthProvider,
-  User,
-  onAuthStateChanged,
-  reauthenticateWithPopup,
-  signInWithPopup,
-  signOut,
-} from 'firebase/auth';
-import { AuthGate, AuthGateStep } from './components/AuthGate';
-import {
   AchievementsScreen,
   CasesScreen,
   DailyRewardsScreen,
   InventoryScreen,
   LeaderboardScreen,
+  MarketSectionTab,
   MarketplaceScreen,
   MissionsScreen,
+  OwnersGiftScreen,
   SeasonPassScreen,
   TradingScreen,
 } from './components/EconomyScreens';
+import { Chapter2Canvas } from './components/Chapter2Canvas';
+import {
+  Chapter2GameOverModal,
+  Chapter2SectorClearModal,
+  Chapter2VictoryScreen,
+} from './components/Chapter2Modals';
 import { GameCanvas } from './components/GameCanvas';
+import {
+  AdminSidePanel,
+  CreatorKeyModal,
+  CreatorLoginResult,
+  FriendsScreen,
+} from './components/FriendsAndAdminModals';
 import { LanguageSelector } from './components/LanguageSelector';
 import {
   AchievementsModal,
@@ -30,56 +35,37 @@ import {
   PauseModal,
   SettingsModal,
   StageClearModal,
-  TrialGateModal,
   WorldSelectScreen,
 } from './components/Menus';
 import { SeasonalLoadingOverlay } from './components/SkinPreviewCanvas';
+import {
+  LocalAccountSetupScreen,
+  ProfileScreen,
+  WinterStartScreen,
+} from './components/StartAndProfileScreens';
 import { TutorialModal } from './components/TutorialModal';
 import {
   ZaiEventPromoModal,
   ZaiEventsScreen,
   ZaiWarningBanner,
 } from './components/ZaiEventAnnouncement';
-import {
-  auth,
-  clearGmailAccessToken,
-  getGmailAccessToken,
-  googleProvider,
-  setGmailAccessToken,
-} from './firebase';
 import { audio } from './game/audio';
-import {
-  acceptTradeOffer,
-  cancelTradeOffer,
-  createTradeOffer,
-  fetchLeaderboardEntries,
-  loadCloudEconomy,
-  rejectTradeOffer,
-  saveCloudEconomy,
-  settleSenderTrades,
-  subscribeToUserTrades,
-  syncLeaderboardEntry,
-} from './game/cloudEconomy';
-import {
-  loadCloudSave,
-  mergeTrialSaveToCloud,
-  resetCloudSave,
-  saveCloudProgress,
-  saveInGameProfile,
-  syncUserProfile,
-} from './game/cloudSave';
 import {
   ALL_MISSIONS,
   ECONOMY_ACHIEVEMENTS,
   applyGameplayRewards,
+  applyServerGiftsAction,
   buyCaseAction,
+  buySeasonPassLevelAction,
   buySkinAction,
   buyWebDesignAction,
+  claimBonusSeasonPassLevelAction,
   claimDailyRewardAction,
   claimHolidayGiftAction,
   claimMissionAction,
   claimSeasonPassLevelAction,
   createInitialEconomyData,
+  deductFriendGiftAction,
   equipSkinAction,
   equipWebDesignAction,
   getEffectiveStreakStatus,
@@ -90,20 +76,43 @@ import {
   sellWebDesignAction,
   useSpecialItemAction,
 } from './game/economy';
-import {
-  clearPendingOtp,
-  sendGmailVerificationCode,
-  verifyGmailCode,
-} from './game/gmailOtp';
 import { LanguageCode, isRtlLanguage, normalizeLangCode, tr } from './game/i18n';
+import {
+  CHAPTER2_SECTOR_MAP,
+  CHAPTER2_SECTORS,
+  getNextChapter2SectorId,
+} from './game/chapter2Levels';
 import { ALL_STAGES, STAGE_MAP, getNextStageId } from './game/levels';
+import {
+  buildLocalLeaderboard,
+  clearProfileProgressKeepIdentity,
+  createLocalProfileWithMigration,
+  executeNpcSkinSwap,
+  exportSaveBackupJson,
+  getActiveLocalProfile,
+  importSaveBackupJson,
+  loadAllLocalProfiles,
+  loadCustomAvatarFromIdb,
+  mirrorBackupToIdb,
+  setActiveProfileId,
+  updateLocalProfile,
+  upsertCreatorLocalProfile,
+} from './game/localPersistence';
+import {
+  SocialSnapshot,
+  claimPendingGiftsApi,
+  clearSocialSession,
+  fetchMySocialApi,
+  getSocialSessionUid,
+  hasSocialToken,
+  registerOrSyncAccountApi,
+} from './game/socialApi';
 import {
   buildSeasonPassLevels,
   getLiveCalendarInfo,
   getSeasonLevelFromXp,
 } from './game/seasons';
 import {
-  clearSaveData,
   createInitialSaveData,
   evaluateAchievements,
   loadSaveData,
@@ -114,15 +123,14 @@ import {
 import {
   ACHIEVEMENTS,
   CaseType,
+  Chapter2ClearSummary,
   EconomyData,
   GameSettings,
   LeaderboardEntry,
   ModalTab,
   SaveData,
   ScreenState,
-  SpiderColorId,
   StageClearSummary,
-  TradeOffer,
   UserProfileData,
 } from './game/types';
 import {
@@ -132,55 +140,76 @@ import {
   getEffectiveEventClock,
 } from './game/zaiCollection';
 
+type BootPhase = 'WINTER_START' | 'LANGUAGE' | 'CREATE_ACCOUNT' | 'READY';
+
 export default function App() {
   const [calendar, setCalendar] = useState(() => getLiveCalendarInfo());
   const [realNow, setRealNow] = useState<Date>(() => new Date());
-  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
-  const [userProfile, setUserProfile] = useState<UserProfileData | null>(null);
-  const [authChecking, setAuthChecking] = useState(true);
-  const [authBusy, setAuthBusy] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [authInfo, setAuthInfo] = useState<string | null>(null);
 
-  const [gmailVerified, setGmailVerified] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpTargetEmail, setOtpTargetEmail] = useState<string | null>(null);
-  const [resendCooldown, setResendCooldown] = useState(0);
+  const [initialBootstrap] = useState(() => {
+    const cal = getLiveCalendarInfo();
+    const prof = getActiveLocalProfile();
+    const loadedSettings = loadSettings();
+    const save = prof ? loadSaveData(prof.uid) : createInitialSaveData();
+    const econ = prof
+      ? loadLocalEconomy(prof.uid, cal)
+      : createInitialEconomyData('local', 0, 'classic', cal);
+    save.totalCoins = econ.spikeyCoins;
+    if (!loadedSettings.language && econ.selectedLanguage) {
+      loadedSettings.language = econ.selectedLanguage;
+    }
+    return { prof, save, econ, loadedSettings };
+  });
 
-  const [isTrialMode, setIsTrialMode] = useState(false);
-  const [trialGateOpen, setTrialGateOpen] = useState(false);
-  const [cloudError, setCloudError] = useState<Error | null>(null);
+  const [bootPhase, setBootPhase] = useState<BootPhase>('WINTER_START');
+  const [userProfile, setUserProfile] = useState<UserProfileData | null>(
+    initialBootstrap.prof
+  );
+  const [saveData, setSaveData] = useState<SaveData>(initialBootstrap.save);
+  const [economy, setEconomy] = useState<EconomyData>(initialBootstrap.econ);
+  const [settings, setSettings] = useState<GameSettings>(
+    initialBootstrap.loadedSettings
+  );
 
-  const [saveData, setSaveData] = useState<SaveData>(() => createInitialSaveData());
-  const [economy, setEconomy] = useState<EconomyData>(() => createInitialEconomyData());
-  const [settings, setSettings] = useState<GameSettings>(() => loadSettings());
   const [screen, setScreen] = useState<ScreenState>('TITLE_MENU');
   const [modal, setModal] = useState<ModalTab>('NONE');
-  const [activeStageId, setActiveStageId] = useState<string>('1-1');
+  const [activeStageId, setActiveStageId] = useState<string>(
+    initialBootstrap.save.currentStageId || '1-1'
+  );
+  const [activeChapter2SectorId, setActiveChapter2SectorId] = useState<string>(
+    initialBootstrap.save.chapter2CurrentSectorId || 'C2-1'
+  );
   const [restartNonce, setRestartNonce] = useState(0);
   const [clearSummary, setClearSummary] = useState<StageClearSummary | null>(null);
+  const [ch2ClearSummary, setCh2ClearSummary] = useState<Chapter2ClearSummary | null>(null);
   const [gameOverStats, setGameOverStats] = useState({ score: 0, coins: 0 });
+  const [ch2GameOverStats, setCh2GameOverStats] = useState({ score: 0, coins: 0 });
   const [achievementToast, setAchievementToast] = useState<string | null>(null);
 
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
-  const [trades, setTrades] = useState<TradeOffer[]>([]);
-  const [tradePartnerUid, setTradePartnerUid] = useState<string | null>(null);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(() =>
+    buildLocalLeaderboard(
+      initialBootstrap.prof,
+      initialBootstrap.save,
+      initialBootstrap.econ,
+      calendar
+    )
+  );
   const [pendingCaseToSpin, setPendingCaseToSpin] = useState<CaseType | null>(null);
   const [loadingStageLabel, setLoadingStageLabel] = useState<string | null>(null);
 
   const [simMode, setSimMode] = useState<ZaiEventSimMode>('live');
-  const [simTargetEventId, setSimTargetEventId] = useState<AnnualZaiEventId>('zai_summer');
+  const [simTargetEventId, setSimTargetEventId] =
+    useState<AnnualZaiEventId>('zai_summer');
   const [simAnchorRealMs, setSimAnchorRealMs] = useState<number>(() => Date.now());
-  const [dismissedAlertKey, setDismissedAlertKey] = useState<string | null>(null);
   const [promoEventId, setPromoEventId] = useState<AnnualZaiEventId | null>(null);
-  const [marketInitialTab, setMarketInitialTab] = useState<'skins' | 'webs' | 'zai' | 'schedule'>('skins');
+  const [marketInitialTab, setMarketInitialTab] =
+    useState<MarketSectionTab>('featured');
   const [showLangSelector, setShowLangSelector] = useState(false);
   const [lastStageXpEarned, setLastStageXpEarned] = useState(0);
+  const [socialState, setSocialState] = useState<SocialSnapshot | null>(null);
+  const [ownerPanelOpen, setOwnerPanelOpen] = useState(false);
+  const [pendingWinterCreatorAuth, setPendingWinterCreatorAuth] = useState(false);
 
-  const saveDirtyRef = useRef(false);
-  const pendingTrialSaveRef = useRef<SaveData | null>(null);
-  const pendingTrialCoinsRef = useRef<number>(0);
   const latestEconomyRef = useRef<EconomyData>(economy);
   latestEconomyRef.current = economy;
   const latestSaveRef = useRef<SaveData>(saveData);
@@ -191,6 +220,36 @@ export default function App() {
   const prevZaiPhaseRef = useRef<string>('none');
   const tutorialCheckedRef = useRef(false);
 
+  // Hydrate custom avatar from IndexedDB for active profile on mount
+  useEffect(() => {
+    const uid = initialBootstrap.prof?.uid;
+    if (!uid) return;
+    let active = true;
+    void loadCustomAvatarFromIdb(uid).then((dataUrl) => {
+      if (!active || !dataUrl) return;
+      setUserProfile((prev) => {
+        if (!prev || prev.uid !== uid) return prev;
+        if (prev.customAvatarDataUrl === dataUrl) return prev;
+        return { ...prev, customAvatarDataUrl: dataUrl };
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [initialBootstrap.prof?.uid]);
+
+  // Listen for fallback custom event if triggered from LocalAccountSetupScreen
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ target?: 'CASES' | 'TITLE_MENU' }>).detail;
+      const target = detail?.target === 'CASES' ? 'CASES' : 'TITLE_MENU';
+      setBootPhase('READY');
+      setScreen(target);
+    };
+    window.addEventListener('spikey:enter-after-account', handler);
+    return () => window.removeEventListener('spikey:enter-after-account', handler);
+  }, []);
+
   // Live 1-second clock + calendar rollover check
   useEffect(() => {
     const secId = window.setInterval(() => {
@@ -198,22 +257,15 @@ export default function App() {
     }, 1000);
     const calId = window.setInterval(() => {
       const next = getLiveCalendarInfo();
-      setCalendar((prev) => (prev.dateKey === next.dateKey && prev.monthKey === next.monthKey ? prev : next));
+      setCalendar((prev) =>
+        prev.dateKey === next.dateKey && prev.monthKey === next.monthKey ? prev : next
+      );
     }, 60_000);
     return () => {
       window.clearInterval(secId);
       window.clearInterval(calId);
     };
   }, []);
-
-  // Resend cooldown ticker
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = window.setInterval(() => {
-      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [resendCooldown]);
 
   const showToast = useCallback((text: string) => {
     setAchievementToast(text);
@@ -222,177 +274,60 @@ export default function App() {
     }, 3400);
   }, []);
 
-  const refreshLeaderboard = useCallback(async () => {
-    setLeaderboardLoading(true);
-    try {
-      const rows = await fetchLeaderboardEntries();
-      setLeaderboard(rows);
-    } catch {
-      // ignore non-fatal leaderboard fetch errors
-    } finally {
-      setLeaderboardLoading(false);
-    }
-  }, []);
+  const refreshLeaderboard = useCallback(
+    (
+      prof = latestProfileRef.current,
+      save = latestSaveRef.current,
+      econ = latestEconomyRef.current
+    ) => {
+      setLeaderboard(buildLocalLeaderboard(prof, save, econ, getLiveCalendarInfo()));
+    },
+    []
+  );
 
-  // Centralized Economy commit: updates state, unifies SaveData.totalCoins, persists local & Firestore + Leaderboard
+  // Centralized local Economy + Save + IndexedDB mirror commit
   const commitEconomy = useCallback(
     (nextEcon: EconomyData, newlyEconomyAch: string[] = []) => {
       latestEconomyRef.current = nextEcon;
       setEconomy(nextEcon);
 
-      const storageId = isTrialMode ? 'trial' : firebaseUser?.uid;
+      const storageId = latestProfileRef.current?.uid ?? 'local';
       persistLocalEconomy(nextEcon, storageId);
 
-      // Keep SaveData.totalCoins strictly unified with Spikey Coins
       const updatedSave = structuredClone(latestSaveRef.current);
       if (updatedSave.totalCoins !== nextEcon.spikeyCoins) {
         updatedSave.totalCoins = nextEcon.spikeyCoins;
         latestSaveRef.current = updatedSave;
         setSaveData(updatedSave);
         persistSaveData(updatedSave, storageId);
-        if (!isTrialMode && firebaseUser?.uid && gmailVerified && latestProfileRef.current?.profileCompleted) {
-          saveDirtyRef.current = true;
-        }
+      }
+
+      if (latestProfileRef.current) {
+        void mirrorBackupToIdb({
+          profile: latestProfileRef.current,
+          saveData: updatedSave,
+          economy: nextEcon,
+          updatedAt: new Date().toISOString(),
+        });
       }
 
       if (newlyEconomyAch.length > 0) {
         const ach = ECONOMY_ACHIEVEMENTS.find((a) => a.id === newlyEconomyAch[0]);
         if (ach) {
           audio.playSfx('chest');
-          showToast(`Yangi Yutuq: ${ach.title}!`);
+          showToast(
+            tr(settings.language, 'toastAchievementUnlocked', { title: ach.title })
+          );
         }
       }
-
-      if (!isTrialMode && firebaseUser?.uid && gmailVerified && latestProfileRef.current?.profileCompleted) {
-        const uid = firebaseUser.uid;
-        const prof = latestProfileRef.current;
-        void saveCloudEconomy(uid, nextEcon).catch((err) => {
-          setCloudError(err instanceof Error ? err : new Error(String(err)));
-        });
-        void syncLeaderboardEntry(uid, prof, updatedSave, nextEcon).catch(() => {});
-      }
     },
-    [firebaseUser?.uid, gmailVerified, isTrialMode, showToast]
+    [settings.language, showToast]
   );
-
-  // Firebase Auth listener + profile/save/economy bootstrap
-  useEffect(() => {
-    let active = true;
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!active) return;
-
-      if (!user) {
-        clearGmailAccessToken();
-        clearPendingOtp();
-        saveDirtyRef.current = false;
-        setFirebaseUser(null);
-        setUserProfile(null);
-        setGmailVerified(false);
-        setOtpSent(false);
-        setOtpTargetEmail(null);
-        setResendCooldown(0);
-        setTrades([]);
-        setAuthChecking(false);
-        return;
-      }
-
-      if (!user.emailVerified) {
-        await signOut(auth).catch(() => {});
-        if (!active) return;
-        clearGmailAccessToken();
-        setFirebaseUser(null);
-        setUserProfile(null);
-        setGmailVerified(false);
-        setAuthError('Google akkauntingiz tasdiqlanmagan. Tasdiqlangan Google akkaunt bilan kiring.');
-        setAuthChecking(false);
-        return;
-      }
-
-      setAuthChecking(true);
-      setAuthError(null);
-
-      try {
-        const profile = await syncUserProfile(user);
-        const cloud = await loadCloudSave(user.uid);
-        const cloudEcon = await loadCloudEconomy(user.uid, cloud, profile);
-        cloud.totalCoins = cloudEcon.spikeyCoins;
-        if (!active) return;
-        saveDirtyRef.current = false;
-        persistSaveData(cloud, user.uid);
-        persistLocalEconomy(cloudEcon, user.uid);
-        setFirebaseUser(user);
-        setUserProfile(profile);
-        setSaveData(cloud);
-        setEconomy(cloudEcon);
-        latestEconomyRef.current = cloudEcon;
-        latestSaveRef.current = cloud;
-        setActiveStageId(cloud.currentStageId || '1-1');
-        setIsTrialMode(false);
-        setTrialGateOpen(false);
-      } catch (err) {
-        if (!active) return;
-        setCloudError(err instanceof Error ? err : new Error(String(err)));
-      } finally {
-        if (active) setAuthChecking(false);
-      }
-    });
-
-    return () => {
-      active = false;
-      unsubscribe();
-    };
-  }, []);
-
-  // Subscribe to real-time Firestore player trades & leaderboard when verified
-  useEffect(() => {
-    if (isTrialMode || !firebaseUser?.uid || !gmailVerified || !userProfile?.profileCompleted) {
-      return;
-    }
-    const uid = firebaseUser.uid;
-    void syncLeaderboardEntry(uid, userProfile, latestSaveRef.current, latestEconomyRef.current).catch(() => {});
-    void refreshLeaderboard();
-
-    const unsub = subscribeToUserTrades(uid, (nextTrades) => {
-      setTrades(nextTrades);
-      void settleSenderTrades(nextTrades, uid, latestEconomyRef.current)
-        .then(({ next, changed }) => {
-          if (changed) {
-            commitEconomy(next);
-            showToast('Savdo holati yangilandi — inventaringizga qo‘shildi!');
-          }
-        })
-        .catch(() => {});
-    });
-
-    return () => unsub();
-  }, [
-    isTrialMode,
-    firebaseUser?.uid,
-    gmailVerified,
-    userProfile,
-    refreshLeaderboard,
-    commitEconomy,
-    showToast,
-  ]);
-
-  // Persist campaign save changes to Cloud Firestore for verified accounts (never in trial mode)
-  useEffect(() => {
-    if (isTrialMode || !saveDirtyRef.current || !firebaseUser || !gmailVerified || !userProfile?.profileCompleted) {
-      return;
-    }
-    saveDirtyRef.current = false;
-    void saveCloudProgress(firebaseUser.uid, saveData).catch((err) => {
-      setCloudError(err instanceof Error ? err : new Error(String(err)));
-    });
-  }, [saveData, firebaseUser, isTrialMode, gmailVerified, userProfile?.profileCompleted]);
 
   // Sync audio volumes with settings
   useEffect(() => {
     audio.setVolumes(settings.musicVolume, settings.sfxVolume);
   }, [settings.musicVolume, settings.sfxVolume]);
-
-  const canPlayFullOrTrial =
-    isTrialMode || (Boolean(firebaseUser) && gmailVerified && Boolean(userProfile?.profileCompleted));
 
   // Effective ZAI announcement state (Live calendar or Events Preview Simulator)
   const effectiveNow = useMemo(
@@ -426,13 +361,11 @@ export default function App() {
     }
   }, [zaiAnnouncement.phase, zaiAnnouncement.eventInstanceKey, simMode]);
 
-  // Auto-open interactive tutorial once on first entry to Main Menu
+  // Auto-open interactive video tutorial on every entry into the game
   useEffect(() => {
     if (
-      !authChecking &&
-      canPlayFullOrTrial &&
+      bootPhase === 'READY' &&
       settings.language &&
-      !settings.tutorialWatched &&
       screen === 'TITLE_MENU' &&
       modal === 'NONE' &&
       !tutorialCheckedRef.current
@@ -440,11 +373,11 @@ export default function App() {
       tutorialCheckedRef.current = true;
       setModal('TUTORIAL');
     }
-  }, [authChecking, canPlayFullOrTrial, settings.language, settings.tutorialWatched, screen, modal]);
+  }, [bootPhase, settings.language, screen, modal]);
 
   // Seasonal & Menu music management
   useEffect(() => {
-    if (authChecking || !canPlayFullOrTrial) return;
+    if (bootPhase !== 'READY') return;
     const isMenuOrEconomyScreen =
       screen === 'TITLE_MENU' ||
       screen === 'WORLD_SELECT' ||
@@ -457,16 +390,104 @@ export default function App() {
       screen === 'ACHIEVEMENTS' ||
       screen === 'LEADERBOARD' ||
       screen === 'TRADING' ||
-      screen === 'EVENTS';
+      screen === 'FRIENDS' ||
+      screen === 'OWNERS_GIFT' ||
+      screen === 'EVENTS' ||
+      screen === 'PROFILE';
 
     if (isMenuOrEconomyScreen) {
       audio.playMusic(calendar.season.musicTrack);
     } else if (screen === 'CAMPAIGN_VICTORY') {
       audio.playMusic('victory');
+    } else if (screen === 'CHAPTER2_VICTORY') {
+      audio.playMusic('ch2Victory');
     }
-  }, [screen, authChecking, canPlayFullOrTrial, calendar.season.musicTrack]);
+  }, [screen, bootPhase, calendar.season.musicTrack]);
 
-  const triggerSeasonalLoading = useCallback((label: string, ms = 750) => {
+  const claimAndApplyServerGifts = useCallback(async () => {
+    if (!hasSocialToken()) return;
+    try {
+      const res = await claimPendingGiftsApi();
+      if (res.ok && res.gifts && res.gifts.length > 0) {
+        const applied = applyServerGiftsAction(
+          latestEconomyRef.current,
+          res.gifts,
+          getLiveCalendarInfo()
+        );
+        if (applied.appliedCount > 0) {
+          audio.playSfx('mythicFanfare');
+          commitEconomy(applied.next, applied.newlyAchievements);
+          showToast(
+            tr(settings.language, 'claimedGiftsToast', {
+              count: applied.appliedCount,
+            })
+          );
+        }
+      }
+    } catch {
+      // Ignore transient offline errors
+    }
+  }, [commitEconomy, settings.language, showToast]);
+
+  const syncSocialProfile = useCallback(async () => {
+    const prof = latestProfileRef.current;
+    if (!prof || !prof.profileCompleted) return;
+    try {
+      if (prof.isCreator) {
+        if (hasSocialToken() && getSocialSessionUid() === prof.uid) {
+          const me = await fetchMySocialApi();
+          if (me.ok && me.social) {
+            setSocialState(me.social);
+          }
+          await claimAndApplyServerGifts();
+        }
+        return;
+      }
+
+      const reg = await registerOrSyncAccountApi({
+        uid: prof.uid,
+        nickname: prof.nickname,
+        avatarId: prof.avatarId,
+        existingAccountId: prof.accountId,
+      });
+      if (reg.ok && reg.account) {
+        if (prof.accountId !== reg.account.accountId) {
+          const updated = updateLocalProfile(prof.uid, {
+            accountId: reg.account.accountId,
+          });
+          if (updated) {
+            latestProfileRef.current = updated;
+            setUserProfile(updated);
+          }
+        }
+        if (reg.social) {
+          setSocialState(reg.social);
+        }
+        await claimAndApplyServerGifts();
+      }
+    } catch {
+      // Offline / transient network errors are non-fatal
+    }
+  }, [claimAndApplyServerGifts]);
+
+  useEffect(() => {
+    if (bootPhase !== 'READY' || !userProfile?.uid) return;
+    void syncSocialProfile();
+  }, [bootPhase, userProfile?.uid, userProfile?.nickname, userProfile?.avatarId, syncSocialProfile]);
+
+  useEffect(() => {
+    if (bootPhase !== 'READY' || screen === 'PLAYING') return;
+    const id = window.setInterval(() => {
+      if (!hasSocialToken()) return;
+      void fetchMySocialApi().then((me) => {
+        if (me.ok && me.social) setSocialState(me.social);
+      });
+      void claimAndApplyServerGifts();
+    }, 8000);
+    return () => window.clearInterval(id);
+  }, [bootPhase, screen, claimAndApplyServerGifts]);
+
+  const triggerSeasonalLoading = useCallback((label: string, ms = 700) => {
     if (loadingTimerRef.current) {
       window.clearTimeout(loadingTimerRef.current);
     }
@@ -477,280 +498,12 @@ export default function App() {
     }, ms);
   }, []);
 
-  const obtainFreshGmailToken = useCallback(async (user: User): Promise<string | null> => {
-    const existing = getGmailAccessToken();
-    if (existing) return existing;
-    const result = await reauthenticateWithPopup(user, googleProvider);
-    const oauthCred = GoogleAuthProvider.credentialFromResult(result);
-    const fresh = oauthCred?.accessToken ?? null;
-    setGmailAccessToken(fresh);
-    return fresh;
-  }, []);
-
-  const handleGoogleSignIn = useCallback(async (enteredEmail?: string) => {
-    audio.unlock();
-    const cleanEntered = (enteredEmail ?? '').trim();
-    if (cleanEntered && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEntered)) {
-      setAuthError('Iltimos, to‘g‘ri Gmail manzilini kiriting (masalan: name@gmail.com).');
-      return;
-    }
-
-    setAuthBusy(true);
-    setAuthError(null);
-    setAuthInfo(null);
-    try {
-      const provider = new GoogleAuthProvider();
-      provider.addScope('https://www.googleapis.com/auth/gmail.send');
-      provider.setCustomParameters(
-        cleanEntered
-          ? { prompt: 'select_account', login_hint: cleanEntered }
-          : { prompt: 'select_account' }
-      );
-
-      const cred = await signInWithPopup(auth, provider);
-      if (!cred.user.emailVerified) {
-        await signOut(auth).catch(() => {});
-        setAuthError('Google akkauntingiz tasdiqlanmagan. Boshqa Google akkaunt tanlang.');
-        return;
-      }
-
-      const oauthCred = GoogleAuthProvider.credentialFromResult(cred);
-      const token = oauthCred?.accessToken ?? null;
-      setGmailAccessToken(token);
-      setGmailVerified(false);
-      setIsTrialMode(false);
-      setTrialGateOpen(false);
-
-      const targetEmail = cleanEntered || cred.user.email || '';
-      setOtpTargetEmail(targetEmail || null);
-
-      if (!token || !targetEmail) {
-        setOtpSent(false);
-        setAuthError('Gmail yuborish ruxsati olinmadi. Kod yuborish tugmasini bosing.');
-        return;
-      }
-
-      await sendGmailVerificationCode(targetEmail, token);
-      setOtpSent(true);
-      setResendCooldown(30);
-      setAuthInfo(`6 xonali tasdiqlash kodi ${targetEmail} Gmail pochtangizga yuborildi!`);
-    } catch (err: unknown) {
-      const code =
-        typeof err === 'object' && err !== null && 'code' in err
-          ? String((err as { code?: string }).code)
-          : '';
-      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-        setAuthError('Google kirish oynasi yopildi. Davom etish uchun qayta bosing.');
-      } else if (code === 'auth/popup-blocked') {
-        setAuthError('Brauzer kirish oynasini blokladi. Pop-up ruxsatini yoqing.');
-      } else if (code === 'auth/network-request-failed') {
-        setAuthError('Internet aloqasi xatosi. Qayta urinib ko‘ring.');
-      } else if (err instanceof Error && err.message === 'GMAIL_TOKEN_EXPIRED') {
-        setOtpSent(false);
-        setAuthError('Gmail ga xat yuborish ruxsati berilmadi. Qayta tasdiqlang.');
-      } else {
-        setAuthError('Gmail ga kod yuborishda xatolik yuz berdi. Qayta urinib ko‘ring.');
-      }
-    } finally {
-      setAuthBusy(false);
-    }
-  }, []);
-
-  const handleConfirmSendCode = useCallback(
-    async (overrideEmail?: string) => {
-      if (!firebaseUser) return;
-      const targetEmail = (overrideEmail?.trim() || otpTargetEmail || firebaseUser.email || '').trim();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
-        setAuthError('Iltimos, to‘g‘ri Gmail manzilini kiriting.');
-        return;
-      }
-
-      setAuthBusy(true);
-      setAuthError(null);
-      setAuthInfo(null);
-
-      try {
-        let token = await obtainFreshGmailToken(firebaseUser);
-        if (!token) {
-          setAuthError('Gmail yuborish ruxsati olinmadi. Qayta urinib ko‘ring.');
-          return;
-        }
-
-        try {
-          await sendGmailVerificationCode(targetEmail, token);
-        } catch (err) {
-          if (err instanceof Error && err.message === 'GMAIL_TOKEN_EXPIRED') {
-            clearGmailAccessToken();
-            token = await obtainFreshGmailToken(firebaseUser);
-            if (!token) throw new Error('Token refresh failed');
-            await sendGmailVerificationCode(targetEmail, token);
-          } else {
-            throw err;
-          }
-        }
-
-        setOtpTargetEmail(targetEmail);
-        setOtpSent(true);
-        setResendCooldown(30);
-        setAuthInfo(`6 xonali tasdiqlash kodi ${targetEmail} Gmail pochtangizga yuborildi!`);
-      } catch (err: unknown) {
-        const code =
-          typeof err === 'object' && err !== null && 'code' in err
-            ? String((err as { code?: string }).code)
-            : '';
-        if (code === 'auth/popup-closed-by-user') {
-          setAuthError('Gmail ruxsati oynasi yopildi. Kod yuborish uchun ruxsat bering.');
-        } else {
-          setAuthError('Gmail ga kod yuborishda xatolik. Gmail ruxsatini tasdiqlab qayta urinib ko‘ring.');
-        }
-      } finally {
-        setAuthBusy(false);
-      }
-    },
-    [firebaseUser, otpTargetEmail, obtainFreshGmailToken]
-  );
-
-  const applyPendingTrialMerge = useCallback(async (uid: string, profile: UserProfileData) => {
-    const pendingSave = pendingTrialSaveRef.current;
-    const trialBonusCoins = pendingTrialCoinsRef.current;
-    pendingTrialSaveRef.current = null;
-    pendingTrialCoinsRef.current = 0;
-
-    let mergedSave = latestSaveRef.current;
-    if (pendingSave) {
-      mergedSave = await mergeTrialSaveToCloud(uid, pendingSave);
-    }
-
-    const cloudEcon = await loadCloudEconomy(uid, mergedSave, profile);
-    if (trialBonusCoins > 0) {
-      cloudEcon.spikeyCoins += trialBonusCoins;
-      await saveCloudEconomy(uid, cloudEcon);
-    }
-    mergedSave.totalCoins = cloudEcon.spikeyCoins;
-    saveDirtyRef.current = false;
-    persistSaveData(mergedSave, uid);
-    persistLocalEconomy(cloudEcon, uid);
-    setSaveData(mergedSave);
-    setEconomy(cloudEcon);
-    latestEconomyRef.current = cloudEcon;
-    latestSaveRef.current = mergedSave;
-    setActiveStageId(mergedSave.currentStageId || '1-1');
-  }, []);
-
-  const handleVerifyCode = useCallback(
-    async (code: string) => {
-      if (!firebaseUser) return;
-      const targetEmail = (otpTargetEmail || firebaseUser.email || '').trim();
-      if (!targetEmail) return;
-      setAuthBusy(true);
-      setAuthError(null);
-      setAuthInfo(null);
-
-      try {
-        const res = await verifyGmailCode(targetEmail, code);
-        if (!res.ok) {
-          if (res.reason === 'EXPIRED') {
-            setAuthError('Kod muddati tugagan. "Kodni qayta yuborish" tugmasini bosing.');
-          } else if (res.reason === 'TOO_MANY_ATTEMPTS') {
-            setAuthError('Juda ko‘p noto‘g‘ri urinish. Yangi kod yuboring.');
-          } else if (res.reason === 'NO_CODE') {
-            setAuthError('Tasdiqlash kodi topilmadi. Avval Gmail ga kod yuboring.');
-          } else {
-            setAuthError(`Kod noto‘g‘ri (${res.attemptsLeft} ta urinish qoldi).`);
-          }
-          return;
-        }
-
-        setGmailVerified(true);
-        setAuthInfo(null);
-        setAuthError(null);
-        if (userProfile?.profileCompleted) {
-          await applyPendingTrialMerge(firebaseUser.uid, userProfile);
-          setScreen('TITLE_MENU');
-          triggerSeasonalLoading(calendar.bannerLine1, 800);
-        }
-      } catch (err) {
-        setCloudError(err instanceof Error ? err : new Error(String(err)));
-      } finally {
-        setAuthBusy(false);
-      }
-    },
-    [firebaseUser, otpTargetEmail, userProfile, applyPendingTrialMerge, triggerSeasonalLoading, calendar.bannerLine1]
-  );
-
-  const handleCreateProfile = useCallback(
-    async (nickname: string, spiderColor: SpiderColorId) => {
-      if (!firebaseUser) return;
-      setAuthBusy(true);
-      setAuthError(null);
-      try {
-        const savedProfile = await saveInGameProfile(firebaseUser, {
-          nickname,
-          spiderColor,
-        });
-        setUserProfile(savedProfile);
-        await applyPendingTrialMerge(firebaseUser.uid, savedProfile);
-        setScreen('TITLE_MENU');
-        triggerSeasonalLoading(calendar.bannerLine1, 850);
-      } catch (err) {
-        setCloudError(err instanceof Error ? err : new Error(String(err)));
-      } finally {
-        setAuthBusy(false);
-      }
-    },
-    [firebaseUser, applyPendingTrialMerge, triggerSeasonalLoading, calendar.bannerLine1]
-  );
-
-  const handleTryForFree = useCallback(() => {
-    audio.unlock();
-    const cal = getLiveCalendarInfo();
-    const trialSave = loadSaveData('trial');
-    const trialEcon = loadLocalEconomy('trial', cal);
-    trialSave.totalCoins = trialEcon.spikeyCoins;
-    setIsTrialMode(true);
-    setTrialGateOpen(false);
-    setAuthError(null);
-    setAuthInfo(null);
-    setSaveData(trialSave);
-    setEconomy(trialEcon);
-    latestSaveRef.current = trialSave;
-    latestEconomyRef.current = trialEcon;
-    setActiveStageId(trialSave.currentStageId === '1-2' ? '1-2' : '1-1');
-    setScreen('TITLE_MENU');
-  }, []);
-
-  const handleConnectGmailFromTrial = useCallback(() => {
-    if (isTrialMode) {
-      if (saveData.hasStarted) {
-        pendingTrialSaveRef.current = structuredClone(saveData);
-      }
-      pendingTrialCoinsRef.current = economy.spikeyCoins;
-    }
-    setTrialGateOpen(false);
-    setIsTrialMode(false);
-    setScreen('TITLE_MENU');
-    setModal('NONE');
-    void handleGoogleSignIn();
-  }, [isTrialMode, saveData, economy.spikeyCoins, handleGoogleSignIn]);
-
-  const handleSignOut = useCallback(async () => {
-    saveDirtyRef.current = false;
-    clearGmailAccessToken();
-    clearPendingOtp();
-    setGmailVerified(false);
-    setOtpSent(false);
-    setOtpTargetEmail(null);
-    setIsTrialMode(false);
-    setTrialGateOpen(false);
-    setTrades([]);
-    setScreen('TITLE_MENU');
-    setModal('NONE');
-    await signOut(auth);
-  }, []);
-
   const updateSave = useCallback(
-    (updater: (draft: SaveData) => void, achContext?: { noDamageClear?: boolean; stageCrystalsAll?: boolean }) => {
-      const storageId = isTrialMode ? 'trial' : firebaseUser?.uid;
+    (
+      updater: (draft: SaveData) => void,
+      achContext?: { noDamageClear?: boolean; stageCrystalsAll?: boolean }
+    ) => {
+      const storageId = latestProfileRef.current?.uid ?? 'local';
       setSaveData((prev) => {
         const next = structuredClone(prev);
         updater(next);
@@ -758,19 +511,28 @@ export default function App() {
         const newly = evaluateAchievements(next, achContext);
         persistSaveData(next, storageId);
         latestSaveRef.current = next;
-        if (!isTrialMode && firebaseUser?.uid && gmailVerified && latestProfileRef.current?.profileCompleted) {
-          saveDirtyRef.current = true;
+        if (latestProfileRef.current) {
+          void mirrorBackupToIdb({
+            profile: latestProfileRef.current,
+            saveData: next,
+            economy: latestEconomyRef.current,
+            updatedAt: new Date().toISOString(),
+          });
         }
         if (newly.length > 0) {
           const first = ACHIEVEMENTS.find((a) => a.id === newly[0]);
           if (first) {
-            showToast(`Yutuq ochildi: ${first.title}`);
+            showToast(
+              tr(settings.language, 'toastAchievementUnlocked', {
+                title: first.title,
+              })
+            );
           }
         }
         return next;
       });
     },
-    [firebaseUser?.uid, gmailVerified, isTrialMode, showToast]
+    [settings.language, showToast]
   );
 
   const handleUpdateSettings = useCallback((next: GameSettings) => {
@@ -784,20 +546,24 @@ export default function App() {
       setSettings(nextSettings);
       persistSettings(nextSettings);
       setShowLangSelector(false);
+
       if (latestEconomyRef.current.selectedLanguage !== code) {
         const updatedEcon: EconomyData = {
           ...latestEconomyRef.current,
           selectedLanguage: code,
         };
-        if (canPlayFullOrTrial) {
-          commitEconomy(updatedEcon);
-        } else {
-          latestEconomyRef.current = updatedEcon;
-          setEconomy(updatedEcon);
+        latestEconomyRef.current = updatedEcon;
+        setEconomy(updatedEcon);
+        if (latestProfileRef.current?.uid) {
+          persistLocalEconomy(updatedEcon, latestProfileRef.current.uid);
         }
       }
+
+      if (bootPhase === 'LANGUAGE') {
+        setBootPhase('CREATE_ACCOUNT');
+      }
     },
-    [settings, canPlayFullOrTrial, commitEconomy]
+    [settings, bootPhase]
   );
 
   const finishTutorial = useCallback(() => {
@@ -808,28 +574,220 @@ export default function App() {
   }, [settings, handleUpdateSettings]);
 
   const handleResetSave = useCallback(() => {
-    const uid = isTrialMode ? 'trial' : firebaseUser?.uid;
-    saveDirtyRef.current = false;
-    const fresh = clearSaveData(uid);
-    fresh.totalCoins = latestEconomyRef.current.spikeyCoins;
-    setSaveData(fresh);
-    latestSaveRef.current = fresh;
+    const prof = latestProfileRef.current;
+    if (!prof) return;
+    const { saveData: freshSave, economy: freshEcon } =
+      clearProfileProgressKeepIdentity(prof, getLiveCalendarInfo());
+    freshEcon.selectedLanguage = settings.language || 'en';
+    persistLocalEconomy(freshEcon, prof.uid);
+    latestSaveRef.current = freshSave;
+    latestEconomyRef.current = freshEcon;
+    setSaveData(freshSave);
+    setEconomy(freshEcon);
     setActiveStageId('1-1');
-    if (!isTrialMode && firebaseUser?.uid) {
-      void resetCloudSave(firebaseUser.uid).catch((err) => {
-        setCloudError(err instanceof Error ? err : new Error(String(err)));
-      });
+    refreshLeaderboard(prof, freshSave, freshEcon);
+    showToast(tr(settings.language, 'resetSave') + ' ✓');
+  }, [settings.language, refreshLeaderboard, showToast]);
+
+  const handleWinterContinue = useCallback(() => {
+    audio.unlock();
+    const active = getActiveLocalProfile();
+    if (active && active.profileCompleted) {
+      // ALWAYS require Creator password when entering the Admin account (even for the owner!)
+      if (active.isCreator) {
+        clearSocialSession();
+        setPendingWinterCreatorAuth(true);
+        return;
+      }
+      const calNow = getLiveCalendarInfo();
+      const loadedSave = loadSaveData(active.uid);
+      const loadedEcon = loadLocalEconomy(active.uid, calNow);
+      loadedSave.totalCoins = loadedEcon.spikeyCoins;
+      setUserProfile(active);
+      setSaveData(loadedSave);
+      setEconomy(loadedEcon);
+      latestProfileRef.current = active;
+      latestSaveRef.current = loadedSave;
+      latestEconomyRef.current = loadedEcon;
+      setActiveStageId(loadedSave.currentStageId || '1-1');
+      if (!settings.language) {
+        const resolvedLang = loadedEcon.selectedLanguage || 'en';
+        const nextSet = { ...settings, language: resolvedLang };
+        setSettings(nextSet);
+        persistSettings(nextSet);
+      }
+      tutorialCheckedRef.current = false;
+      setBootPhase('READY');
+      setScreen('TITLE_MENU');
+      triggerSeasonalLoading(calNow.bannerLine1, 650);
+    } else {
+      setBootPhase('LANGUAGE');
     }
-  }, [firebaseUser?.uid, isTrialMode]);
+  }, [settings, triggerSeasonalLoading]);
+
+  const handleCreateLocalAccount = useCallback(
+    (payload: {
+      nickname: string;
+      avatarId: string;
+      customAvatarDataUrl: string | null;
+    }) => {
+      const calNow = getLiveCalendarInfo();
+      const langCode = settings.language || 'en';
+      const result = createLocalProfileWithMigration(
+        {
+          nickname: payload.nickname,
+          avatarId: payload.avatarId,
+          customAvatarDataUrl: payload.customAvatarDataUrl,
+          language: langCode,
+        },
+        calNow
+      );
+      setUserProfile(result.profile);
+      setSaveData(result.saveData);
+      setEconomy(result.economy);
+      latestProfileRef.current = result.profile;
+      latestSaveRef.current = result.saveData;
+      latestEconomyRef.current = result.economy;
+      setActiveStageId(result.saveData.currentStageId || '1-1');
+      refreshLeaderboard(result.profile, result.saveData, result.economy);
+      return { migratedLegacy: result.migratedLegacy };
+    },
+    [settings.language, refreshLeaderboard]
+  );
+
+  const handleUpdateProfile = useCallback(
+    (patch: Partial<UserProfileData>) => {
+      const cur = latestProfileRef.current;
+      if (!cur) return;
+      const safePatch: Partial<
+        Pick<
+          UserProfileData,
+          'nickname' | 'avatarId' | 'customAvatarDataUrl' | 'profileFrame' | 'spiderColor'
+        >
+      > = {};
+      if (!cur.isCreator && patch.nickname !== undefined) safePatch.nickname = patch.nickname;
+      if (patch.avatarId !== undefined) safePatch.avatarId = patch.avatarId;
+      if (patch.customAvatarDataUrl !== undefined) {
+        safePatch.customAvatarDataUrl = patch.customAvatarDataUrl;
+      }
+      if (patch.profileFrame !== undefined) safePatch.profileFrame = patch.profileFrame;
+      if (patch.spiderColor !== undefined) safePatch.spiderColor = patch.spiderColor;
+
+      const updated = updateLocalProfile(cur.uid, safePatch);
+      if (!updated) return;
+      setUserProfile(updated);
+      latestProfileRef.current = updated;
+      refreshLeaderboard(updated, latestSaveRef.current, latestEconomyRef.current);
+    },
+    [refreshLeaderboard]
+  );
+
+  const handleCreatorLogin = useCallback(
+    (result: CreatorLoginResult) => {
+      const calNow = getLiveCalendarInfo();
+      const langCode = settings.language || 'en';
+      const vip = upsertCreatorLocalProfile(result.account.accountId, calNow);
+      if (langCode && vip.economy.selectedLanguage !== langCode) {
+        vip.economy.selectedLanguage = langCode;
+        persistLocalEconomy(vip.economy, vip.profile.uid);
+      }
+      setUserProfile(vip.profile);
+      setSaveData(vip.saveData);
+      setEconomy(vip.economy);
+      latestProfileRef.current = vip.profile;
+      latestSaveRef.current = vip.saveData;
+      latestEconomyRef.current = vip.economy;
+      setSocialState(result.social ?? null);
+      setActiveStageId(vip.saveData.currentStageId || '1-1');
+      refreshLeaderboard(vip.profile, vip.saveData, vip.economy);
+      tutorialCheckedRef.current = false;
+      setBootPhase('READY');
+      setScreen('TITLE_MENU');
+      triggerSeasonalLoading(calNow.bannerLine1, 650);
+      showToast('Admin VIP ✓');
+    },
+    [settings.language, refreshLeaderboard, triggerSeasonalLoading, showToast]
+  );
+
+  const handleSwitchProfile = useCallback(
+    (uid: string) => {
+      const all = loadAllLocalProfiles();
+      const found = all.find((p) => p.uid === uid);
+      if (!found || found.isCreator) return;
+      clearSocialSession();
+      setOwnerPanelOpen(false);
+      setSocialState(null);
+      setActiveProfileId(uid);
+      const calNow = getLiveCalendarInfo();
+      const nextSave = loadSaveData(uid);
+      const nextEcon = loadLocalEconomy(uid, calNow);
+      nextSave.totalCoins = nextEcon.spikeyCoins;
+      setUserProfile(found);
+      setSaveData(nextSave);
+      setEconomy(nextEcon);
+      latestProfileRef.current = found;
+      latestSaveRef.current = nextSave;
+      latestEconomyRef.current = nextEcon;
+      setActiveStageId(nextSave.currentStageId || '1-1');
+      void loadCustomAvatarFromIdb(uid).then((dataUrl) => {
+        if (!dataUrl) return;
+        setUserProfile((prev) =>
+          prev && prev.uid === uid ? { ...prev, customAvatarDataUrl: dataUrl } : prev
+        );
+      });
+      refreshLeaderboard(found, nextSave, nextEcon);
+      tutorialCheckedRef.current = false;
+      setScreen('TITLE_MENU');
+      showToast(tr(settings.language, 'returningHeroWelcome', { name: found.nickname }));
+    },
+    [refreshLeaderboard, settings.language, showToast]
+  );
+
+  const handleExportBackup = useCallback(() => {
+    const prof = latestProfileRef.current;
+    if (!prof) return;
+    const json = exportSaveBackupJson({
+      profile: prof,
+      saveData: latestSaveRef.current,
+      economy: latestEconomyRef.current,
+      settings,
+    });
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `spider-spikey-backup-${calendar.dateKey}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [settings, calendar.dateKey]);
+
+  const handleImportBackup = useCallback(
+    (rawText: string): { ok: boolean; message: string } => {
+      const res = importSaveBackupJson(rawText, getLiveCalendarInfo());
+      if (!res.ok) {
+        return { ok: false, message: tr(settings.language, 'backupInvalidMsg') };
+      }
+      setUserProfile(res.profile);
+      setSaveData(res.saveData);
+      setEconomy(res.economy);
+      setSettings(res.settings);
+      latestProfileRef.current = res.profile;
+      latestSaveRef.current = res.saveData;
+      latestEconomyRef.current = res.economy;
+      setActiveStageId(res.saveData.currentStageId || '1-1');
+      refreshLeaderboard(res.profile, res.saveData, res.economy);
+      return {
+        ok: true,
+        message: tr(res.settings.language ?? settings.language, 'backupSuccessMsg'),
+      };
+    },
+    [settings.language, refreshLeaderboard]
+  );
 
   const launchStage = useCallback(
     (stageId: string) => {
-      if (isTrialMode && stageId !== '1-1' && stageId !== '1-2') {
-        setClearSummary(null);
-        setTrialGateOpen(true);
-        return;
-      }
-
       audio.unlock();
       const stage = STAGE_MAP[stageId] ?? ALL_STAGES[0];
       updateSave((s) => {
@@ -847,12 +805,11 @@ export default function App() {
       });
       setActiveStageId(stage.id);
       setClearSummary(null);
-      setTrialGateOpen(false);
       setRestartNonce((n) => n + 1);
       setScreen('PLAYING');
       triggerSeasonalLoading(`${stage.id} · ${stage.name}`, 750);
     },
-    [isTrialMode, updateSave, triggerSeasonalLoading]
+    [updateSave, triggerSeasonalLoading]
   );
 
   const handlePlay = useCallback(() => {
@@ -860,29 +817,33 @@ export default function App() {
   }, [launchStage]);
 
   const handleContinue = useCallback(() => {
-    const target =
-      isTrialMode && saveData.currentStageId !== '1-1' && saveData.currentStageId !== '1-2'
-        ? '1-2'
-        : saveData.currentStageId || '1-1';
+    const target = saveData.currentStageId || '1-1';
     launchStage(target);
-  }, [isTrialMode, launchStage, saveData.currentStageId]);
+  }, [launchStage, saveData.currentStageId]);
 
   const handleStageClear = useCallback(
     (summary: StageClearSummary) => {
       const nextId = getNextStageId(summary.stageId);
       const stageCrystalsAll = summary.crystalsCollected.every(Boolean);
-      const isTrialCap = isTrialMode && summary.stageId === '1-2';
       const calNow = getLiveCalendarInfo();
 
       const { next: nextEcon, newlyAchievements, xpEarned } = applyGameplayRewards(
         latestEconomyRef.current,
         {
-          txId: `clear_${summary.stageId}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+          txId: `clear_${summary.stageId}_${Date.now()}_${Math.random()
+            .toString(36)
+            .slice(2, 5)}`,
           coinsEarned: summary.coinsEarned,
           crystalsFound: summary.crystalsCollected.filter(Boolean).length,
           enemiesDefeated: summary.enemiesDefeatedCount ?? 0,
           bossDefeated: summary.isBossStage,
           stageCompleted: true,
+          housesBuiltCount: summary.housesBuiltCount ?? 0,
+          webSwingsCount: summary.webSwingsCount ?? 0,
+          secretsFoundCount: summary.secretsFoundCount ?? 0,
+          noDamage: summary.noDamageBonus,
+          timeSec: summary.timeSec,
+          allCrystals: stageCrystalsAll,
         },
         calNow
       );
@@ -896,7 +857,9 @@ export default function App() {
           s.totalScore += summary.scoreEarned;
           const prevProg = s.stageProgress[summary.stageId];
           const mergedCrystals = [0, 1, 2].map(
-            (i) => Boolean(prevProg?.crystals[i]) || Boolean(summary.crystalsCollected[i])
+            (i) =>
+              Boolean(prevProg?.crystals[i]) ||
+              Boolean(summary.crystalsCollected[i])
           );
           s.stageProgress[summary.stageId] = {
             completed: true,
@@ -916,8 +879,7 @@ export default function App() {
           if (summary.stageId === '4-Boss') s.unlockedAbilities.spiderDash = true;
           if (summary.stageId === '5-Boss') s.unlockedAbilities.magicWeb = true;
 
-          // Bepul sinovda faqat 1-1 va 1-2 darajalar ochiq
-          if (nextId && (!isTrialMode || nextId === '1-2')) {
+          if (nextId) {
             if (!s.unlockedStageIds.includes(nextId)) {
               s.unlockedStageIds.push(nextId);
             }
@@ -930,21 +892,130 @@ export default function App() {
         }
       );
 
-      if (isTrialCap) {
-        setClearSummary({ ...summary, nextStageId: null });
-        setTrialGateOpen(true);
-        return;
-      }
-
       if (summary.isFinalBoss) {
+        updateSave((s) => {
+          s.chapter2Unlocked = true;
+          if (!s.chapter2UnlockedSectors || s.chapter2UnlockedSectors.length === 0) {
+            s.chapter2UnlockedSectors = ['C2-1'];
+          }
+        });
         setScreen('CAMPAIGN_VICTORY');
       } else {
         setClearSummary({ ...summary, nextStageId: nextId });
         setScreen('STAGE_CLEAR');
       }
     },
-    [isTrialMode, updateSave, commitEconomy]
+    [updateSave, commitEconomy]
   );
+
+  const launchChapter2Sector = useCallback(
+    (sectorId: string) => {
+      audio.unlock();
+      const sector = CHAPTER2_SECTOR_MAP[sectorId] ?? CHAPTER2_SECTORS[0];
+      updateSave((s) => {
+        s.chapter2Unlocked = true;
+        s.chapter2CurrentSectorId = sector.id;
+        if (!s.chapter2UnlockedSectors) s.chapter2UnlockedSectors = ['C2-1'];
+        if (!s.chapter2UnlockedSectors.includes(sector.id)) {
+          s.chapter2UnlockedSectors.push(sector.id);
+        }
+        if (s.lives <= 0) s.lives = 5;
+      });
+      setActiveChapter2SectorId(sector.id);
+      setCh2ClearSummary(null);
+      setRestartNonce((n) => n + 1);
+      setScreen('CHAPTER2_PLAYING');
+      triggerSeasonalLoading(`CH2 · ${sector.id} · ${sector.name}`, 700);
+    },
+    [updateSave, triggerSeasonalLoading]
+  );
+
+  const handleChapter2SectorClear = useCallback(
+    (summary: Chapter2ClearSummary) => {
+      const nextId = getNextChapter2SectorId(summary.sectorId);
+      const calNow = getLiveCalendarInfo();
+
+      const { next: nextEcon, newlyAchievements } = applyGameplayRewards(
+        latestEconomyRef.current,
+        {
+          txId: `ch2_clear_${summary.sectorId}_${Date.now()}_${Math.random()
+            .toString(36)
+            .slice(2, 5)}`,
+          coinsEarned: summary.coinsEarned,
+          crystalsFound: summary.stars,
+          enemiesDefeated: summary.enemiesDefeatedCount,
+          bossDefeated: summary.isBossSector,
+          stageCompleted: true,
+          noDamage: summary.noDamageBonus,
+          timeSec: summary.timeSec,
+        },
+        calNow
+      );
+      commitEconomy(nextEcon, newlyAchievements);
+
+      updateSave((s) => {
+        s.chapter2Unlocked = true;
+        s.totalCoins = nextEcon.spikeyCoins;
+        s.totalScore += summary.scoreEarned;
+        if (!s.chapter2Progress) s.chapter2Progress = {};
+        const prev = s.chapter2Progress[summary.sectorId];
+        s.chapter2Progress[summary.sectorId] = {
+          completed: true,
+          bestScore: Math.max(prev?.bestScore ?? 0, summary.scoreEarned),
+          bestTimeSec: prev?.bestTimeSec
+            ? Math.min(prev.bestTimeSec, summary.timeSec)
+            : summary.timeSec,
+          stars: Math.max(prev?.stars ?? 0, summary.stars),
+        };
+        if (!s.chapter2UnlockedSectors) s.chapter2UnlockedSectors = ['C2-1'];
+        if (nextId && !s.chapter2UnlockedSectors.includes(nextId)) {
+          s.chapter2UnlockedSectors.push(nextId);
+        }
+        if (nextId) {
+          s.chapter2CurrentSectorId = nextId;
+        }
+      });
+
+      if (summary.isFinalChapter2Boss) {
+        setScreen('CHAPTER2_VICTORY');
+      } else {
+        setCh2ClearSummary({ ...summary, nextSectorId: nextId });
+        setScreen('CHAPTER2_CLEAR');
+      }
+    },
+    [updateSave, commitEconomy]
+  );
+
+  const handleChapter2GameOver = useCallback(
+    (score: number, coins: number) => {
+      if (coins > 0) {
+        const { next, newlyAchievements } = applyGameplayRewards(
+          latestEconomyRef.current,
+          {
+            txId: `ch2_gameover_${activeChapter2SectorId}_${Date.now()}`,
+            coinsEarned: coins,
+            crystalsFound: 0,
+            enemiesDefeated: 0,
+            bossDefeated: false,
+            stageCompleted: false,
+          },
+          getLiveCalendarInfo()
+        );
+        commitEconomy(next, newlyAchievements);
+      }
+      setCh2GameOverStats({ score, coins });
+      setScreen('CHAPTER2_GAME_OVER');
+    },
+    [activeChapter2SectorId, commitEconomy]
+  );
+
+  const handleChapter2PauseToggle = useCallback(() => {
+    setScreen((prev) => {
+      if (prev === 'CHAPTER2_PLAYING') return 'CHAPTER2_PAUSED';
+      if (prev === 'CHAPTER2_PAUSED') return 'CHAPTER2_PLAYING';
+      return prev;
+    });
+  }, []);
 
   const handleGameOver = useCallback(
     (score: number, coins: number) => {
@@ -977,12 +1048,23 @@ export default function App() {
     });
   }, []);
 
-  // Badge hisoblagichlar bosh menyu uchun
+  // Main menu badge counters (Standard + Bonus Season Pass tracks, Daily Reward, Missions)
   const seasonClaimReadyCount = useMemo(() => {
     const curLvl = getSeasonLevelFromXp(economy.seasonXp);
     const lvls = buildSeasonPassLevels(calendar.month);
-    return lvls.filter((l) => l.level <= curLvl && !economy.claimedSeasonLevels.includes(l.level)).length;
-  }, [economy.seasonXp, economy.claimedSeasonLevels, calendar.month]);
+    const claimedBonus = economy.claimedBonusSeasonLevels ?? [];
+    return lvls.filter(
+      (l) =>
+        l.level <= curLvl &&
+        (!economy.claimedSeasonLevels.includes(l.level) ||
+          !claimedBonus.includes(l.level))
+    ).length;
+  }, [
+    economy.seasonXp,
+    economy.claimedSeasonLevels,
+    economy.claimedBonusSeasonLevels,
+    calendar.month,
+  ]);
 
   const dailyClaimReady = useMemo(
     () => getEffectiveStreakStatus(economy, calendar).canClaimToday,
@@ -999,21 +1081,79 @@ export default function App() {
     [economy.missionProgress, economy.claimedMissions]
   );
 
-  const incomingTradesCount = useMemo(
-    () => trades.filter((t) => t.recipientUid === firebaseUser?.uid && t.status === 'pending').length,
-    [trades, firebaseUser?.uid]
-  );
+  const uiLang = settings.language || economy.selectedLanguage || 'en';
 
-  if (cloudError) {
-    throw cloudError;
+  // Phase 1: Winter Start Screen ("CONTINUE")
+  if (bootPhase === 'WINTER_START') {
+    return (
+      <div
+        className="relative w-screen h-screen overflow-hidden bg-[#06101f]"
+        dir={isRtlLanguage(uiLang) ? 'rtl' : 'ltr'}
+      >
+        <WinterStartScreen
+          lang={uiLang}
+          activeProfile={userProfile}
+          economy={economy}
+          onContinue={handleWinterContinue}
+          onOpenLanguage={() => setShowLangSelector(true)}
+        />
+        {showLangSelector && (
+          <LanguageSelector
+            currentLanguage={
+              settings.language ? normalizeLangCode(settings.language) : null
+            }
+            isFirstLaunchGate={false}
+            onSelectLanguage={handleSelectLanguage}
+            onClose={() => setShowLangSelector(false)}
+          />
+        )}
+        {pendingWinterCreatorAuth && (
+          <CreatorKeyModal
+            lang={uiLang}
+            subtitleOverride={tr(uiLang, 'adminPasswordRequiredMsg')}
+            onSuccess={(result) => {
+              setPendingWinterCreatorAuth(false);
+              handleCreatorLogin(result);
+            }}
+            onOpenNormalAccount={() => {
+              setPendingWinterCreatorAuth(false);
+              const normalProfiles = loadAllLocalProfiles().filter((p) => !p.isCreator);
+              if (normalProfiles.length > 0) {
+                const chosen = normalProfiles[0];
+                const calNow = getLiveCalendarInfo();
+                const nextSave = loadSaveData(chosen.uid);
+                const nextEcon = loadLocalEconomy(chosen.uid, calNow);
+                nextSave.totalCoins = nextEcon.spikeyCoins;
+                setActiveProfileId(chosen.uid);
+                setUserProfile(chosen);
+                setSaveData(nextSave);
+                setEconomy(nextEcon);
+                latestProfileRef.current = chosen;
+                latestSaveRef.current = nextSave;
+                latestEconomyRef.current = nextEcon;
+                setActiveStageId(nextSave.currentStageId || '1-1');
+                setBootPhase('READY');
+                setScreen('TITLE_MENU');
+                triggerSeasonalLoading(calNow.bannerLine1, 650);
+              } else {
+                setBootPhase(settings.language ? 'CREATE_ACCOUNT' : 'LANGUAGE');
+              }
+            }}
+            onClose={() => setPendingWinterCreatorAuth(false)}
+          />
+        )}
+      </div>
+    );
   }
 
-  // First-Launch Language Gate BEFORE Login & Main Menu
-  if (!settings.language) {
+  // Phase 2: First-Launch 38-Language Selection Screen
+  if (bootPhase === 'LANGUAGE') {
     return (
       <div className="relative w-screen h-screen overflow-hidden bg-[#050811]">
         <LanguageSelector
-          currentLanguage={settings.language ? normalizeLangCode(settings.language) : null}
+          currentLanguage={
+            settings.language ? normalizeLangCode(settings.language) : null
+          }
           isFirstLaunchGate={true}
           onSelectLanguage={handleSelectLanguage}
         />
@@ -1021,128 +1161,149 @@ export default function App() {
     );
   }
 
-  // AuthGate: Bepul sinov tanlanguncha yoki Google + Gmail 6-xonali OTP + O‘yin profili yakunlanguncha
-  if (authChecking || !canPlayFullOrTrial) {
-    let authStep: AuthGateStep = 'SIGN_IN';
-    if (firebaseUser) {
-      if (!gmailVerified) {
-        authStep = otpSent ? 'ENTER_OTP' : 'CONFIRM_GMAIL_SEND';
-      } else if (!userProfile?.profileCompleted) {
-        authStep = 'CREATE_PROFILE';
-      }
-    }
-
+  // Phase 3: Local Account Setup Screen (Nickname + Avatar + Auto-Migration + 2 Free Common Cases)
+  if (bootPhase === 'CREATE_ACCOUNT' || !userProfile) {
     return (
       <div
-        className="relative w-screen h-screen overflow-hidden bg-[#0a1a17]"
-        dir={isRtlLanguage(settings.language) ? 'rtl' : 'ltr'}
+        className="relative w-screen h-screen overflow-y-auto bg-[#060b16]"
+        dir={isRtlLanguage(uiLang) ? 'rtl' : 'ltr'}
       >
-        <AuthGate
-          step={authStep}
-          loading={authChecking}
-          busy={authBusy}
-          email={otpTargetEmail ?? firebaseUser?.email ?? null}
-          suggestedNickname={firebaseUser?.displayName ?? ''}
-          resendCooldown={resendCooldown}
-          error={authError}
-          infoMessage={authInfo}
-          lang={settings.language}
-          onOpenLanguage={() => setShowLangSelector(true)}
-          onGoogleSignIn={handleGoogleSignIn}
-          onTryForFree={handleTryForFree}
-          onConfirmSendCode={handleConfirmSendCode}
-          onVerifyCode={handleVerifyCode}
-          onResendCode={() => void handleConfirmSendCode()}
-          onSwitchAccount={handleSignOut}
-          onCreateProfile={handleCreateProfile}
+        <LocalAccountSetupScreen
+          lang={uiLang}
+          onCreateAccount={handleCreateLocalAccount}
+          onCreatorLogin={handleCreatorLogin}
+          onFinishSetup={(target) => {
+            tutorialCheckedRef.current = false;
+            setBootPhase('READY');
+            setScreen(target);
+            triggerSeasonalLoading(calendar.bannerLine1, 700);
+          }}
+          onBackToLanguage={() => {
+            if (userProfile) {
+              setBootPhase('READY');
+              setScreen('PROFILE');
+            } else {
+              setBootPhase('LANGUAGE');
+            }
+          }}
         />
-        {showLangSelector && (
-          <LanguageSelector
-            currentLanguage={settings.language ? normalizeLangCode(settings.language) : null}
-            isFirstLaunchGate={false}
-            onSelectLanguage={handleSelectLanguage}
-            onClose={() => setShowLangSelector(false)}
-          />
-        )}
       </div>
     );
   }
 
   const currentStage = STAGE_MAP[activeStageId] ?? ALL_STAGES[0];
+  const currentCh2Sector =
+    CHAPTER2_SECTOR_MAP[activeChapter2SectorId] ?? CHAPTER2_SECTORS[0];
   const inGameView =
     screen === 'PLAYING' ||
     screen === 'PAUSED' ||
     screen === 'STAGE_CLEAR' ||
     screen === 'GAME_OVER';
+  const inChapter2View =
+    screen === 'CHAPTER2_PLAYING' ||
+    screen === 'CHAPTER2_PAUSED' ||
+    screen === 'CHAPTER2_CLEAR' ||
+    screen === 'CHAPTER2_GAME_OVER';
 
-  const alertDismissed = dismissedAlertKey === zaiAnnouncement.eventInstanceKey;
+  const alertDismissed =
+    (settings.dismissedZaiAlertKey ?? null) === zaiAnnouncement.eventInstanceKey;
   const reopenZaiAlert =
     zaiAnnouncement.phase !== 'none'
       ? {
-          active: alertDismissed,
+          active: alertDismissed || settings.notificationsEnabled === false,
           isRelease: zaiAnnouncement.phase === 'active_now',
           label: tr(
-            settings.language,
-            zaiAnnouncement.phase === 'active_now' ? 'activeNow' : 'reopenEventAlert'
+            uiLang,
+            zaiAnnouncement.phase === 'active_now'
+              ? 'activeNow'
+              : 'reopenEventAlert'
           ),
-          onClick: () => setDismissedAlertKey(null),
+          onClick: () =>
+            handleUpdateSettings({
+              ...settings,
+              dismissedZaiAlertKey: null,
+              notificationsEnabled: true,
+            }),
         }
       : null;
 
   return (
     <div
-      className="flex flex-col relative w-screen h-screen overflow-hidden bg-[#090d16]"
-      dir={isRtlLanguage(settings.language) ? 'rtl' : 'ltr'}
+      className={`flex flex-col relative w-screen h-screen overflow-hidden bg-[#090d16] ${
+        settings.reducedMotion ? 'reduce-motion' : ''
+      } ${settings.highContrastHud ? 'high-contrast-hud' : ''}`}
+      dir={isRtlLanguage(uiLang) ? 'rtl' : 'ltr'}
     >
-      {screen !== 'CAMPAIGN_VICTORY' && (
-        <ZaiWarningBanner
-          snapshot={zaiAnnouncement}
-          lang={settings.language}
-          compactGameplay={inGameView && screen === 'PLAYING'}
-          dismissed={alertDismissed}
-          onDismiss={() => setDismissedAlertKey(zaiAnnouncement.eventInstanceKey)}
-          onViewEvent={(evId) => setPromoEventId(evId)}
-          onExploreCollection={() => {
-            setMarketInitialTab('zai');
-            setScreen('MARKETPLACE');
-          }}
-        />
-      )}
+      {screen !== 'CAMPAIGN_VICTORY' &&
+        screen !== 'CHAPTER2_VICTORY' &&
+        !inChapter2View && (
+          <ZaiWarningBanner
+            snapshot={zaiAnnouncement}
+            lang={uiLang}
+            compactGameplay={inGameView && screen === 'PLAYING'}
+            dismissed={alertDismissed}
+            notificationsEnabled={settings.notificationsEnabled !== false}
+            onDismiss={() =>
+              handleUpdateSettings({
+                ...settings,
+                dismissedZaiAlertKey: zaiAnnouncement.eventInstanceKey,
+              })
+            }
+            onReopen={() =>
+              handleUpdateSettings({
+                ...settings,
+                dismissedZaiAlertKey: null,
+                notificationsEnabled: true,
+              })
+            }
+            onViewEvent={(evId) => setPromoEventId(evId)}
+            onExploreCollection={() => {
+              setMarketInitialTab('zai');
+              setScreen('MARKETPLACE');
+            }}
+          />
+        )}
 
       {screen === 'TITLE_MENU' && (
         <MainMenu
           saveData={saveData}
           economy={economy}
           calendar={calendar}
-          lang={settings.language}
+          lang={uiLang}
           menuThemeMode={settings.menuThemeMode}
           graphicsQuality={settings.graphicsQuality}
           reopenZaiAlert={reopenZaiAlert}
-          isTrialMode={isTrialMode}
-          nickname={userProfile?.nickname}
-          userEmail={firebaseUser?.email ?? null}
-          userName={firebaseUser?.displayName ?? null}
-          incomingTradesCount={incomingTradesCount}
+          profile={userProfile}
+          incomingTradesCount={0}
+          pendingFriendRequestsCount={socialState?.incomingRequests.length ?? 0}
           dailyClaimReady={dailyClaimReady}
           seasonClaimReadyCount={seasonClaimReadyCount}
           missionsClaimReadyCount={missionsClaimReadyCount}
           onToggleSeasonTheme={() =>
             handleUpdateSettings({
               ...settings,
-              menuThemeMode: settings.menuThemeMode === 'winter' ? 'live' : 'winter',
+              menuThemeMode:
+                settings.menuThemeMode === 'winter' ? 'live' : 'winter',
             })
           }
           onOpenLanguage={() => setShowLangSelector(true)}
           onOpenTutorial={() => setModal('TUTORIAL')}
-          onConnectGmail={handleConnectGmailFromTrial}
-          onSignOut={handleSignOut}
+          onOpenOwnerPanel={
+            userProfile.isCreator ? () => setOwnerPanelOpen(true) : undefined
+          }
           onPlay={handlePlay}
           onContinue={handleContinue}
+          onEnterChapter2={() =>
+            launchChapter2Sector(saveData.chapter2CurrentSectorId || 'C2-1')
+          }
           onNavigateScreen={(target) => {
-            if (target === 'MARKETPLACE') setMarketInitialTab('skins');
+            if (target === 'MARKETPLACE') setMarketInitialTab('featured');
             setScreen(target);
-            if (target === 'LEADERBOARD' || target === 'TRADING') {
-              void refreshLeaderboard();
+            if (target === 'LEADERBOARD') {
+              refreshLeaderboard();
+            }
+            if (target === 'FRIENDS') {
+              void syncSocialProfile();
             }
           }}
           onOpenModal={(tab) => setModal(tab)}
@@ -1152,13 +1313,34 @@ export default function App() {
       {screen === 'WORLD_SELECT' && (
         <WorldSelectScreen
           saveData={saveData}
-          lang={settings.language}
-          isTrialMode={isTrialMode}
-          onRequireGmail={() => {
-            setClearSummary(null);
-            setTrialGateOpen(true);
-          }}
+          isCreator={Boolean(userProfile.isCreator || economy.isCreator)}
+          lang={uiLang}
           onSelectStage={launchStage}
+          onSelectChapter2Sector={launchChapter2Sector}
+          onBack={() => setScreen('TITLE_MENU')}
+        />
+      )}
+
+      {screen === 'PROFILE' && (
+        <ProfileScreen
+          lang={uiLang}
+          profile={userProfile}
+          saveData={saveData}
+          economy={economy}
+          onUpdateProfile={handleUpdateProfile}
+          onEquipFrame={(frameId) => {
+            const nextEcon: EconomyData = {
+              ...economy,
+              equippedProfileFrame: frameId,
+            };
+            commitEconomy(nextEcon);
+          }}
+          onExportBackup={handleExportBackup}
+          onImportBackup={handleImportBackup}
+          onSwitchProfile={handleSwitchProfile}
+          onCreateNewProfile={() => setBootPhase('CREATE_ACCOUNT')}
+          onCreatorLogin={handleCreatorLogin}
+          onResetSave={handleResetSave}
           onBack={() => setScreen('TITLE_MENU')}
         />
       )}
@@ -1167,12 +1349,37 @@ export default function App() {
         <SeasonPassScreen
           economy={economy}
           calendar={calendar}
+          lang={uiLang}
           onClaimLevel={(lvl) => {
             const res = claimSeasonPassLevelAction(economy, lvl, calendar);
             if (res.ok) {
               audio.playSfx('purchase');
               commitEconomy(res.next, res.newlyAchievements);
-              showToast(`${lvl}-daraja sovg‘asi olindi: ${res.labelUz}`);
+              showToast(`${lvl} · ${res.labelUz}`);
+            } else if (res.errorUz) {
+              showToast(res.errorUz);
+            }
+          }}
+          onClaimBonusLevel={(lvl) => {
+            const res = claimBonusSeasonPassLevelAction(
+              economy,
+              lvl,
+              calendar
+            );
+            if (res.ok) {
+              audio.playSfx('purchase');
+              commitEconomy(res.next, res.newlyAchievements);
+              showToast(`BONUS ${lvl} · ${res.labelUz}`);
+            } else if (res.errorUz) {
+              showToast(res.errorUz);
+            }
+          }}
+          onBuyNextLevel={() => {
+            const res = buySeasonPassLevelAction(economy, calendar);
+            if (res.ok) {
+              audio.playSfx('purchase');
+              commitEconomy(res.next, res.newlyAchievements);
+              showToast(`LVL ${res.newLevel} (-${res.cost?.toLocaleString()} 💰)`);
             } else if (res.errorUz) {
               showToast(res.errorUz);
             }
@@ -1185,6 +1392,7 @@ export default function App() {
         <DailyRewardsScreen
           economy={economy}
           calendar={calendar}
+          lang={uiLang}
           onClaimDaily={() => {
             const res = claimDailyRewardAction(economy, calendar);
             if (res.ok) {
@@ -1199,17 +1407,18 @@ export default function App() {
 
       {screen === 'MARKETPLACE' && (
         <MarketplaceScreen
+          key={marketInitialTab}
           economy={economy}
           calendar={calendar}
           effectiveNow={effectiveNow}
-          lang={settings.language}
+          lang={uiLang}
           initialTab={marketInitialTab}
           onBuySkin={(skinId) => {
             const res = buySkinAction(economy, skinId, calendar, effectiveNow);
             if (res.ok) {
               audio.playSfx('purchase');
               commitEconomy(res.next, res.newlyAchievements);
-              showToast('Skin muvaffaqiyatli sotib olindi va kiyildi!');
+              showToast(tr(uiLang, 'toastSkinBought'));
             } else if (res.errorUz) {
               showToast(res.errorUz);
             }
@@ -1226,17 +1435,26 @@ export default function App() {
             if (res.ok) {
               audio.playSfx('purchase');
               commitEconomy(res.next, res.newlyAchievements);
-              showToast(`Skin sotildi: +${res.soldPrice.toLocaleString()} Spikey Coins!`);
+              showToast(
+                tr(uiLang, 'toastSoldCoins', {
+                  amount: res.soldPrice.toLocaleString(),
+                })
+              );
             } else if (res.errorUz) {
               showToast(res.errorUz);
             }
           }}
           onBuyWebDesign={(webId) => {
-            const res = buyWebDesignAction(economy, webId, calendar, effectiveNow);
+            const res = buyWebDesignAction(
+              economy,
+              webId,
+              calendar,
+              effectiveNow
+            );
             if (res.ok) {
               audio.playSfx('purchase');
               commitEconomy(res.next, res.newlyAchievements);
-              showToast('To‘r dizayni sotib olindi va taqildi!');
+              showToast(tr(uiLang, 'toastWebBought'));
             } else if (res.errorUz) {
               showToast(res.errorUz);
             }
@@ -1253,7 +1471,26 @@ export default function App() {
             if (res.ok) {
               audio.playSfx('purchase');
               commitEconomy(res.next, res.newlyAchievements);
-              showToast(`To‘r sotildi: +${res.soldPrice.toLocaleString()} Spikey Coins!`);
+              showToast(
+                tr(uiLang, 'toastSoldCoins', {
+                  amount: res.soldPrice.toLocaleString(),
+                })
+              );
+            } else if (res.errorUz) {
+              showToast(res.errorUz);
+            }
+          }}
+          onBuyCase={(caseType) => {
+            const res = buyCaseAction(
+              economy,
+              caseType,
+              calendar,
+              effectiveNow
+            );
+            if (res.ok) {
+              audio.playSfx('purchase');
+              commitEconomy(res.next);
+              showToast(tr(uiLang, 'toastCaseBought'));
             } else if (res.errorUz) {
               showToast(res.errorUz);
             }
@@ -1268,14 +1505,19 @@ export default function App() {
           economy={economy}
           calendar={calendar}
           effectiveNow={effectiveNow}
-          lang={settings.language}
+          lang={uiLang}
           initialCaseToSpin={pendingCaseToSpin}
           onBuyCase={(caseType) => {
-            const res = buyCaseAction(economy, caseType, calendar, effectiveNow);
+            const res = buyCaseAction(
+              economy,
+              caseType,
+              calendar,
+              effectiveNow
+            );
             if (res.ok) {
               audio.playSfx('purchase');
               commitEconomy(res.next);
-              showToast('Keys xarid qilindi!');
+              showToast(tr(uiLang, 'toastCaseBought'));
             } else if (res.errorUz) {
               showToast(res.errorUz);
             }
@@ -1292,7 +1534,7 @@ export default function App() {
             if (res.ok) {
               audio.playSfx('menuClick');
               commitEconomy(res.next);
-              showToast('Yangi skin kiyildi!');
+              showToast(tr(uiLang, 'toastSkinEquipped'));
             }
           }}
           onSellSkin={(skinId) => {
@@ -1300,7 +1542,11 @@ export default function App() {
             if (res.ok) {
               audio.playSfx('purchase');
               commitEconomy(res.next, res.newlyAchievements);
-              showToast(`Skin sotildi: +${res.soldPrice.toLocaleString()} Spikey Coins!`);
+              showToast(
+                tr(uiLang, 'toastSoldCoins', {
+                  amount: res.soldPrice.toLocaleString(),
+                })
+              );
             } else if (res.errorUz) {
               showToast(res.errorUz);
             }
@@ -1316,13 +1562,13 @@ export default function App() {
         <InventoryScreen
           economy={economy}
           calendar={calendar}
-          lang={settings.language}
+          lang={uiLang}
           onEquipSkin={(skinId) => {
             const res = equipSkinAction(economy, skinId, calendar);
             if (res.ok) {
               audio.playSfx('menuClick');
               commitEconomy(res.next);
-              showToast('Skin kiyildi!');
+              showToast(tr(uiLang, 'toastSkinEquipped'));
             }
           }}
           onSellSkin={(skinId) => {
@@ -1330,7 +1576,11 @@ export default function App() {
             if (res.ok) {
               audio.playSfx('purchase');
               commitEconomy(res.next, res.newlyAchievements);
-              showToast(`Skin sotildi: +${res.soldPrice.toLocaleString()} Spikey Coins!`);
+              showToast(
+                tr(uiLang, 'toastSoldCoins', {
+                  amount: res.soldPrice.toLocaleString(),
+                })
+              );
             } else if (res.errorUz) {
               showToast(res.errorUz);
             }
@@ -1340,7 +1590,7 @@ export default function App() {
             if (res.ok) {
               audio.playSfx('menuClick');
               commitEconomy(res.next);
-              showToast('To‘r dizayni taqildi!');
+              showToast(tr(uiLang, 'toastWebEquipped'));
             }
           }}
           onSellWebDesign={(webId) => {
@@ -1348,7 +1598,11 @@ export default function App() {
             if (res.ok) {
               audio.playSfx('purchase');
               commitEconomy(res.next, res.newlyAchievements);
-              showToast(`To‘r sotildi: +${res.soldPrice.toLocaleString()} Spikey Coins!`);
+              showToast(
+                tr(uiLang, 'toastSoldCoins', {
+                  amount: res.soldPrice.toLocaleString(),
+                })
+              );
             } else if (res.errorUz) {
               showToast(res.errorUz);
             }
@@ -1373,12 +1627,13 @@ export default function App() {
         <MissionsScreen
           economy={economy}
           calendar={calendar}
+          lang={uiLang}
           onClaimMission={(missionId) => {
             const res = claimMissionAction(economy, missionId, calendar);
             if (res.ok) {
               audio.playSfx('purchase');
               commitEconomy(res.next, res.newlyAchievements);
-              showToast('Topshiriq mukofoti olindi!');
+              showToast(tr(uiLang, 'toastMissionClaimed'));
             } else if (res.errorUz) {
               showToast(res.errorUz);
             }
@@ -1388,7 +1643,12 @@ export default function App() {
             if (res.ok) {
               audio.playSfx('mythicFanfare');
               commitEconomy(res.next, res.newlyAchievements);
-              showToast(`${calendar.season.eventTitleUz} sovg‘asi olindi!`);
+              showToast(
+                `${calendar.season.eventTitleUz} — ${tr(
+                  uiLang,
+                  'rewardClaimedTag'
+                )}`
+              );
             } else if (res.errorUz) {
               showToast(res.errorUz);
             }
@@ -1398,7 +1658,7 @@ export default function App() {
             if (res.ok) {
               audio.playSfx('purchase');
               commitEconomy(res.next, res.newlyAchievements);
-              showToast('Bayram skini xarid qilindi!');
+              showToast(tr(uiLang, 'toastSkinBought'));
             } else if (res.errorUz) {
               showToast(res.errorUz);
             }
@@ -1412,6 +1672,7 @@ export default function App() {
           saveData={saveData}
           economy={economy}
           calendar={calendar}
+          lang={uiLang}
           onBack={() => setScreen('TITLE_MENU')}
         />
       )}
@@ -1419,62 +1680,30 @@ export default function App() {
       {screen === 'LEADERBOARD' && (
         <LeaderboardScreen
           entries={leaderboard}
-          loading={leaderboardLoading}
-          currentUid={isTrialMode ? null : firebaseUser?.uid ?? null}
+          loading={false}
+          currentUid={userProfile.uid}
           economy={economy}
           calendar={calendar}
-          onRefresh={() => void refreshLeaderboard()}
-          onStartTradeWith={(entry) => {
-            setTradePartnerUid(entry.uid);
-            setScreen('TRADING');
-          }}
+          lang={uiLang}
+          onRefresh={() => refreshLeaderboard()}
+          onStartTradeWith={() => setScreen('TRADING')}
           onBack={() => setScreen('TITLE_MENU')}
         />
       )}
 
       {screen === 'TRADING' && (
         <TradingScreen
-          isTrialMode={isTrialMode}
-          currentUid={isTrialMode ? null : firebaseUser?.uid ?? null}
           economy={economy}
           calendar={calendar}
-          players={leaderboard}
-          trades={trades}
-          initialPartnerUid={tradePartnerUid}
-          onCreateTrade={async (recipient, offeredSkinId, requestedSkinId) => {
-            if (!firebaseUser || !userProfile) return;
-            const nextEcon = await createTradeOffer(
-              firebaseUser.uid,
-              userProfile.nickname || userProfile.displayName,
-              recipient,
-              offeredSkinId,
-              requestedSkinId,
-              latestEconomyRef.current
-            );
-            commitEconomy(nextEcon);
+          lang={uiLang}
+          onSwapNpcOffer={(offer) => {
+            const res = executeNpcSkinSwap(economy, offer, calendar);
+            if (res.ok) {
+              commitEconomy(res.next, res.newlyAchievements);
+              showToast(tr(uiLang, 'swapCompletedMsg'));
+            }
+            return { ok: res.ok, errorUz: res.errorUz };
           }}
-          onAcceptTrade={async (trade) => {
-            if (!firebaseUser) return;
-            const nextEcon = await acceptTradeOffer(
-              trade,
-              firebaseUser.uid,
-              latestEconomyRef.current
-            );
-            commitEconomy(nextEcon);
-          }}
-          onRejectTrade={async (trade) => {
-            await rejectTradeOffer(trade);
-          }}
-          onCancelTrade={async (trade) => {
-            if (!firebaseUser) return;
-            const nextEcon = await cancelTradeOffer(
-              trade,
-              firebaseUser.uid,
-              latestEconomyRef.current
-            );
-            commitEconomy(nextEcon);
-          }}
-          onConnectGmail={handleConnectGmailFromTrial}
           onBack={() => setScreen('TITLE_MENU')}
         />
       )}
@@ -1484,12 +1713,16 @@ export default function App() {
           effectiveNow={effectiveNow}
           simMode={simMode}
           simTargetEventId={simTargetEventId}
-          lang={settings.language}
+          lang={uiLang}
           onChangeSimMode={(mode, targetEventId) => {
             setSimMode(mode);
             setSimTargetEventId(targetEventId);
             setSimAnchorRealMs(Date.now());
-            setDismissedAlertKey(null);
+            handleUpdateSettings({
+              ...settings,
+              dismissedZaiAlertKey: null,
+              notificationsEnabled: true,
+            });
           }}
           onOpenPromo={(eventId) => setPromoEventId(eventId)}
           onOpenMarketZai={() => {
@@ -1497,6 +1730,60 @@ export default function App() {
             setScreen('MARKETPLACE');
           }}
           onOpenCases={() => setScreen('CASES')}
+          onBack={() => setScreen('TITLE_MENU')}
+        />
+      )}
+
+      {screen === 'FRIENDS' && (
+        <FriendsScreen
+          lang={uiLang}
+          profile={userProfile}
+          economy={economy}
+          calendar={calendar}
+          social={socialState}
+          onSocialUpdated={(nextSocial) => setSocialState(nextSocial)}
+          onRetrySync={syncSocialProfile}
+          onClaimGifts={claimAndApplyServerGifts}
+          onDeductGift={(payload) => {
+            const res = deductFriendGiftAction(
+              latestEconomyRef.current,
+              payload,
+              getLiveCalendarInfo()
+            );
+            if (res.ok) {
+              commitEconomy(res.next);
+              return true;
+            }
+            if (res.errorUz) showToast(res.errorUz);
+            return false;
+          }}
+          onNotify={(msg) => showToast(msg)}
+          onBack={() => setScreen('TITLE_MENU')}
+        />
+      )}
+
+      {screen === 'OWNERS_GIFT' && !userProfile.isCreator && (
+        <OwnersGiftScreen
+          economy={economy}
+          calendar={calendar}
+          lang={uiLang}
+          onEquipSkin={(skinId) => {
+            const res = equipSkinAction(economy, skinId, calendar);
+            if (res.ok) {
+              audio.playSfx('menuClick');
+              commitEconomy(res.next);
+              showToast(tr(uiLang, 'toastSkinEquipped'));
+            }
+          }}
+          onEquipWebDesign={(webId) => {
+            const res = equipWebDesignAction(economy, webId, calendar);
+            if (res.ok) {
+              audio.playSfx('menuClick');
+              commitEconomy(res.next);
+            }
+          }}
+          onOpenCases={() => setScreen('CASES')}
+          onCheckGifts={syncSocialProfile}
           onBack={() => setScreen('TITLE_MENU')}
         />
       )}
@@ -1510,10 +1797,10 @@ export default function App() {
             equippedSkin={economy.equippedSkin}
             equippedWebDesign={economy.equippedWebDesign ?? 'classic_white'}
             spikeyCoinsTotal={economy.spikeyCoins}
+            isCreator={economy.isCreator}
             paused={
               screen !== 'PLAYING' ||
               modal !== 'NONE' ||
-              trialGateOpen ||
               Boolean(loadingStageLabel) ||
               Boolean(promoEventId) ||
               showLangSelector
@@ -1527,9 +1814,10 @@ export default function App() {
         </div>
       )}
 
-      {screen === 'PAUSED' && modal === 'NONE' && !trialGateOpen && (
+      {screen === 'PAUSED' && modal === 'NONE' && (
         <PauseModal
           stageName={`${currentStage.id} · ${currentStage.name}`}
+          lang={uiLang}
           onResume={() => setScreen('PLAYING')}
           onRestart={() => launchStage(currentStage.id)}
           onSettings={() => setModal('SETTINGS')}
@@ -1537,10 +1825,10 @@ export default function App() {
         />
       )}
 
-      {screen === 'STAGE_CLEAR' && clearSummary && !trialGateOpen && (
+      {screen === 'STAGE_CLEAR' && clearSummary && (
         <StageClearModal
           summary={clearSummary}
-          lang={settings.language}
+          lang={uiLang}
           xpEarned={lastStageXpEarned}
           onNextStage={() => {
             if (clearSummary.nextStageId) launchStage(clearSummary.nextStageId);
@@ -1550,25 +1838,11 @@ export default function App() {
         />
       )}
 
-      {trialGateOpen && (
-        <TrialGateModal
-          summary={clearSummary}
-          onConnectGmail={handleConnectGmailFromTrial}
-          onReplay={() => {
-            setTrialGateOpen(false);
-            launchStage('1-2');
-          }}
-          onMenu={() => {
-            setTrialGateOpen(false);
-            setScreen('TITLE_MENU');
-          }}
-        />
-      )}
-
       {screen === 'GAME_OVER' && (
         <GameOverModal
           score={gameOverStats.score}
           coins={gameOverStats.coins}
+          lang={uiLang}
           onRetry={() => {
             updateSave((s) => {
               s.lives = 5;
@@ -1593,8 +1867,105 @@ export default function App() {
       {screen === 'CAMPAIGN_VICTORY' && (
         <CampaignVictoryScreen
           saveData={saveData}
+          lang={uiLang}
+          onAcceptChapter2={(rating) => {
+            updateSave((s) => {
+              s.chapter2Unlocked = true;
+              s.chapter1Survey = {
+                rating,
+                acceptedChapter2: true,
+                answeredAt: new Date().toISOString(),
+              };
+            });
+            launchChapter2Sector('C2-1');
+          }}
+          onDeclineChapter2={(rating) => {
+            updateSave((s) => {
+              s.chapter2Unlocked = true;
+              s.chapter1Survey = {
+                rating,
+                acceptedChapter2: false,
+                answeredAt: new Date().toISOString(),
+              };
+            });
+          }}
           onPlayAgain={() => launchStage('1-1')}
           onWorldSelect={() => setScreen('WORLD_SELECT')}
+          onMenu={() => setScreen('TITLE_MENU')}
+        />
+      )}
+
+      {inChapter2View && (
+        <div className="flex-1 min-h-0 relative">
+          <Chapter2Canvas
+            sector={currentCh2Sector}
+            lives={saveData.lives}
+            settings={settings}
+            equippedSkin={economy.equippedSkin}
+            equippedWebDesign={economy.equippedWebDesign ?? 'classic_white'}
+            spikeyCoinsTotal={economy.spikeyCoins}
+            isCreator={economy.isCreator}
+            paused={
+              screen !== 'CHAPTER2_PLAYING' ||
+              modal !== 'NONE' ||
+              Boolean(loadingStageLabel) ||
+              showLangSelector
+            }
+            restartNonce={restartNonce}
+            onPauseToggle={handleChapter2PauseToggle}
+            onSectorClear={handleChapter2SectorClear}
+            onGameOver={handleChapter2GameOver}
+          />
+        </div>
+      )}
+
+      {screen === 'CHAPTER2_PAUSED' && modal === 'NONE' && (
+        <PauseModal
+          stageName={`CH2 · ${currentCh2Sector.id} · ${currentCh2Sector.name}`}
+          lang={uiLang}
+          onResume={() => setScreen('CHAPTER2_PLAYING')}
+          onRestart={() => launchChapter2Sector(currentCh2Sector.id)}
+          onSettings={() => setModal('SETTINGS')}
+          onQuit={() => setScreen('TITLE_MENU')}
+        />
+      )}
+
+      {screen === 'CHAPTER2_CLEAR' && ch2ClearSummary && (
+        <Chapter2SectorClearModal
+          summary={ch2ClearSummary}
+          onNextSector={() => {
+            if (ch2ClearSummary.nextSectorId) {
+              launchChapter2Sector(ch2ClearSummary.nextSectorId);
+            }
+          }}
+          onReplay={() => launchChapter2Sector(ch2ClearSummary.sectorId)}
+          onMenu={() => setScreen('TITLE_MENU')}
+        />
+      )}
+
+      {screen === 'CHAPTER2_GAME_OVER' && (
+        <Chapter2GameOverModal
+          score={ch2GameOverStats.score}
+          coins={ch2GameOverStats.coins}
+          onRetry={() => {
+            updateSave((s) => {
+              s.lives = 5;
+            });
+            launchChapter2Sector(currentCh2Sector.id);
+          }}
+          onMenu={() => {
+            updateSave((s) => {
+              s.lives = 5;
+            });
+            setScreen('TITLE_MENU');
+          }}
+        />
+      )}
+
+      {screen === 'CHAPTER2_VICTORY' && (
+        <Chapter2VictoryScreen
+          saveData={saveData}
+          onPlayAgain={() => launchChapter2Sector('C2-1')}
           onMenu={() => setScreen('TITLE_MENU')}
         />
       )}
@@ -1602,26 +1973,37 @@ export default function App() {
       {modal === 'SETTINGS' && (
         <SettingsModal
           settings={settings}
-          lang={settings.language}
+          lang={uiLang}
           onUpdateSettings={handleUpdateSettings}
           onOpenLanguage={() => setShowLangSelector(true)}
           onOpenTutorial={() => setModal('TUTORIAL')}
+          onOpenProfile={() => {
+            setModal('NONE');
+            setScreen('PROFILE');
+          }}
           onResetSave={handleResetSave}
           onClose={() => setModal('NONE')}
         />
       )}
 
       {modal === 'ACHIEVEMENTS' && (
-        <AchievementsModal saveData={saveData} onClose={() => setModal('NONE')} />
+        <AchievementsModal
+          saveData={saveData}
+          lang={uiLang}
+          onClose={() => setModal('NONE')}
+        />
       )}
 
-      {modal === 'CREDITS' && <CreditsModal onClose={() => setModal('NONE')} />}
+      {modal === 'CREDITS' && (
+        <CreditsModal lang={uiLang} onClose={() => setModal('NONE')} />
+      )}
 
       {modal === 'TUTORIAL' && (
         <TutorialModal
-          lang={settings.language}
+          lang={uiLang}
           skinId={economy.equippedSkin}
           webDesignId={economy.equippedWebDesign ?? 'classic_white'}
+          keyBindings={settings.keyBindings}
           onComplete={finishTutorial}
           onSkip={finishTutorial}
         />
@@ -1631,7 +2013,7 @@ export default function App() {
         <ZaiEventPromoModal
           eventId={promoEventId}
           effectiveNow={effectiveNow}
-          lang={settings.language}
+          lang={uiLang}
           onClose={() => setPromoEventId(null)}
           onExploreCollection={() => {
             setPromoEventId(null);
@@ -1643,7 +2025,9 @@ export default function App() {
 
       {showLangSelector && (
         <LanguageSelector
-          currentLanguage={settings.language ? normalizeLangCode(settings.language) : null}
+          currentLanguage={
+            settings.language ? normalizeLangCode(settings.language) : null
+          }
           isFirstLaunchGate={false}
           onSelectLanguage={handleSelectLanguage}
           onClose={() => setShowLangSelector(false)}
@@ -1658,9 +2042,24 @@ export default function App() {
         />
       )}
 
+      {userProfile.isCreator &&
+        economy.isCreator &&
+        screen !== 'PLAYING' &&
+        screen !== 'CHAPTER2_PLAYING' && (
+        <AdminSidePanel
+          lang={uiLang}
+          open={ownerPanelOpen}
+          onOpenChange={setOwnerPanelOpen}
+          onNotify={(msg) => showToast(msg)}
+          onSocialUpdated={(nextSocial) => setSocialState(nextSocial)}
+        />
+      )}
+
       {achievementToast && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 pixel-panel px-4 py-2.5 border-amber-400/80 bg-slate-950/95 pointer-events-none">
-          <span className="font-pixel text-xs text-amber-300">{achievementToast}</span>
+          <span className="font-pixel text-xs text-amber-300">
+            {achievementToast}
+          </span>
         </div>
       )}
     </div>

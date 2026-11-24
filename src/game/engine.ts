@@ -1,4 +1,5 @@
 import { audio } from './audio';
+import { tr } from './i18n';
 import {
   drawBoss,
   drawEnemy,
@@ -314,6 +315,9 @@ export class GameEngine {
   private crystalsCollected: boolean[] = [false, false, false];
   private scoreEarned = 0;
   private enemiesDefeatedInStage = 0;
+  private housesBuiltInStage = 0;
+  private webSwingsInStage = 0;
+  private secretsFoundInStage = 0;
   private newlyUnlockedAbility: AbilityId | null = null;
   private bannerText: string | null = null;
   private bannerTimer = 0;
@@ -325,6 +329,8 @@ export class GameEngine {
   private equippedSkinId = 'classic';
   private equippedWebDesignId = 'classic_white';
   private graphicsQuality: GraphicsQuality = 'high';
+  private lang: string | null = null;
+  private screenShakeEnabled = true;
 
   constructor(
     stage: StageDef,
@@ -332,7 +338,9 @@ export class GameEngine {
     callbacks: EngineCallbacks,
     equippedSkinId = 'classic',
     equippedWebDesignId = 'classic_white',
-    graphicsQuality: GraphicsQuality = 'high'
+    graphicsQuality: GraphicsQuality = 'high',
+    lang: string | null = null,
+    screenShakeEnabled = true
   ) {
     this.stage = stage;
     this.save = structuredClone(save);
@@ -340,6 +348,8 @@ export class GameEngine {
     this.equippedSkinId = equippedSkinId || 'classic';
     this.equippedWebDesignId = equippedWebDesignId || 'classic_white';
     this.graphicsQuality = graphicsQuality || 'high';
+    this.lang = lang ?? null;
+    this.screenShakeEnabled = screenShakeEnabled;
 
     // Clone tiles so secret false walls or breakable changes don't mutate template
     this.tiles = stage.tiles.map((row) => [...row]);
@@ -546,11 +556,15 @@ export class GameEngine {
   public updateCosmetics(
     skinId: string,
     webDesignId: string,
-    quality: GraphicsQuality
+    quality: GraphicsQuality,
+    lang: string | null = this.lang,
+    screenShakeEnabled: boolean = this.screenShakeEnabled
   ): void {
     this.equippedSkinId = skinId || 'classic';
     this.equippedWebDesignId = webDesignId || 'classic_white';
     this.graphicsQuality = quality || 'high';
+    this.lang = lang ?? null;
+    this.screenShakeEnabled = screenShakeEnabled;
   }
 
   public shootWebAtLogicalPoint(lx: number, ly: number): void {
@@ -573,7 +587,7 @@ export class GameEngine {
     const wy = ly + this.camY;
     const anchor = this.findAimedSwingAnchor(wx, wy) ?? this.findOrCreateSwingAnchor();
     if (!anchor) {
-      this.addFloatingText(this.px, this.py - 16, 'TO‘R ILINISH JOYI YO‘Q', '#fca5a5');
+      this.addFloatingText(this.px, this.py - 16, tr(this.lang, 'noWebAnchor'), '#fca5a5');
       this.spawnBurst(this.px, this.py - 10, '#94a3b8', 4, 40);
       return;
     }
@@ -584,7 +598,7 @@ export class GameEngine {
     if (this.save.unlockedAbilities.webTrap && this.save.unlockedAbilities.magicWeb) {
       const next: SpecialAbilityId = this.save.activeSpecial === 'webTrap' ? 'magicWeb' : 'webTrap';
       this.setActiveSpecial(next);
-      this.showBanner(`Maxsus qobiliyat: ${ABILITY_META[next].name}`, 1.6);
+      this.showBanner(tr(this.lang, 'specialSwapped', { name: ABILITY_META[next].name }), 1.6);
     }
   }
 
@@ -594,6 +608,7 @@ export class GameEngine {
   }
 
   private addShake(intensity: number, duration: number): void {
+    if (!this.screenShakeEnabled) return;
     this.shakeIntensity = Math.max(this.shakeIntensity, intensity);
     this.shakeTimer = Math.max(this.shakeTimer, duration);
   }
@@ -825,7 +840,7 @@ export class GameEngine {
       } else if (input.webSwingPressed) {
         const anchor = this.findOrCreateSwingAnchor();
         if (!anchor) {
-          this.addFloatingText(this.px, this.py - 16, 'YUQORIDA JOY YO‘Q', '#fca5a5');
+          this.addFloatingText(this.px, this.py - 16, tr(this.lang, 'noOverheadRoom'), '#fca5a5');
           this.spawnBurst(this.px, this.py - 8, '#94a3b8', 4, 45);
         } else {
           this.attachWebToAnchor(anchor);
@@ -1302,8 +1317,9 @@ export class GameEngine {
         }
       }
     }
-    this.addFloatingText(this.px, this.py - 16, 'YASHIRIN YO‘L!', '#fde047');
+    this.addFloatingText(this.px, this.py - 16, tr(this.lang, 'secretPath'), '#fde047');
     audio.playSfx('checkpoint');
+    this.secretsFoundInStage += 1;
     this.callbacks.onSaveProgress((s) => {
       s.secretsFoundTotal += 1;
     });
@@ -1344,6 +1360,7 @@ export class GameEngine {
     this.webClimbing = false;
     this.grounded = false;
     audio.playSfx('webSwing');
+    this.webSwingsInStage += 1;
     this.spawnBurst(anchor.x, anchor.y, resolveWebStrokeColor(design, this.time, 0, false), 8, 60);
     this.emitHud();
   }
@@ -1466,14 +1483,14 @@ export class GameEngine {
 
     // Ensure minimum clearance and prevent overlapping solid tiles inside core
     if (minHorizontal < 10 && leftFree + rightFree < 28) {
-      this.addFloatingText(this.px, this.py - 16, 'JOY TOR!', '#fca5a5');
+      this.addFloatingText(this.px, this.py - 16, tr(this.lang, 'tightSpace'), '#fca5a5');
       return;
     }
 
     // Prevent overlapping crates, shrines, portals, collectibles, enemies, boss, or existing houses
     for (const existing of this.craftedWebs) {
       if (Math.abs(existing.cx - cx) < hw + existing.hw - 6 && Math.abs(existing.cy - cy) < hh + existing.hh - 4) {
-        this.addFloatingText(this.px, this.py - 16, 'UY BU YERDA MAVJUD!', '#fde68a');
+        this.addFloatingText(this.px, this.py - 16, tr(this.lang, 'houseExists'), '#fde68a');
         return;
       }
     }
@@ -1488,7 +1505,7 @@ export class GameEngine {
       (this.boss && this.boss.state !== 'defeated' && overlapsObj(this.boss.x, this.boss.y, 16)) ||
       (!this.stage.isBossStage && overlapsObj(this.stage.exit.x, this.stage.exit.y, 10))
     ) {
-      this.addFloatingText(this.px, this.py - 16, 'OBYEKT BILAN TO‘QNASHDI!', '#fca5a5');
+      this.addFloatingText(this.px, this.py - 16, tr(this.lang, 'objectCollision'), '#fca5a5');
       return;
     }
 
@@ -1538,6 +1555,8 @@ export class GameEngine {
       buildProgress: 0.05,
       charms,
     });
+    this.housesBuiltInStage += 1;
+    this.housesBuiltInStage += 1;
 
     if (!this.grounded && this.webRegrabCooldown <= 0) {
       this.webClimbing = true;
@@ -1550,7 +1569,7 @@ export class GameEngine {
     audio.playSfx('houseWeave');
     this.spawnBurst(cx, cy, resolveWebStrokeColor(design, this.time, 0, false), 14, 65);
     if (minVertical > 0) {
-      this.addFloatingText(cx, cy - hh - 8, 'O‘RGIMCHAK UYI!', design.secondaryHex);
+      this.addFloatingText(cx, cy - hh - 8, tr(this.lang, 'spiderHouseBuilt'), design.secondaryHex);
     }
   }
 
@@ -1894,7 +1913,7 @@ export class GameEngine {
     const newPhase: 1 | 2 | 3 = hpRatio <= 0.3 ? 3 : hpRatio <= 0.6 ? 2 : 1;
     if (newPhase !== b.phase) {
       b.phase = newPhase;
-      this.showBanner(`${b.name} — ${newPhase}-Bosqich!`, 2.2);
+      this.showBanner(tr(this.lang, 'bossPhaseBanner', { name: b.name, phase: newPhase }), 2.2);
       this.addShake(3, 0.25);
       audio.playSfx('bossWarn');
     }
@@ -2188,7 +2207,7 @@ export class GameEngine {
       this.scoreEarned += 1000;
       this.addShake(5, 0.55);
       audio.playSfx('bossDefeat');
-      this.showBanner(`${b.name} Mag‘lub Etildi!`, 2.2);
+      this.showBanner(tr(this.lang, 'bossDefeatedBanner', { name: b.name }), 2.2);
       this.callbacks.onSaveProgress((s) => {
         if (!s.bossesDefeated.includes(b.type)) {
           s.bossesDefeated.push(b.type);
@@ -2340,18 +2359,19 @@ export class GameEngine {
           this.scoreEarned += 250;
           audio.playSfx('crystal');
           this.spawnBurst(c.x, c.y, '#c084fc', 14, 95);
-          this.addFloatingText(c.x, c.y - 10, 'KRISTALL!', '#e879f9');
+          this.addFloatingText(c.x, c.y - 10, tr(this.lang, 'crystalFound'), '#e879f9');
         } else if (c.kind === 'heart') {
           this.hp = Math.min(this.maxHp, this.hp + 1);
           audio.playSfx('checkpoint');
           this.spawnBurst(c.x, c.y, '#ef4444', 8, 65);
-          this.addFloatingText(c.x, c.y - 10, '+1 JON', '#fda4af');
+          this.addFloatingText(c.x, c.y - 10, tr(this.lang, 'plusOneLife'), '#fda4af');
         } else if (c.kind === 'chest') {
           this.coinsEarned += 10;
           this.scoreEarned += 300;
           audio.playSfx('chest');
           this.spawnBurst(c.x, c.y, '#fde047', 16, 110);
-          this.addFloatingText(c.x, c.y - 12, 'XAZINA +10 TANGA!', '#fde047');
+          this.addFloatingText(c.x, c.y - 12, tr(this.lang, 'treasureCoins'), '#fde047');
+          this.secretsFoundInStage += 1;
           this.callbacks.onSaveProgress((s) => {
             s.secretsFoundTotal += 1;
           });
@@ -2367,7 +2387,7 @@ export class GameEngine {
         this.respawnY = cp.y;
         audio.playSfx('checkpoint');
         this.spawnBurst(cp.x, cp.y - 6, '#38bdf8', 12, 80);
-        this.addFloatingText(cp.x, cp.y - 14, 'NAZORAT NUQTASI!', '#7dd3fc');
+        this.addFloatingText(cp.x, cp.y - 14, tr(this.lang, 'checkpointReached'), '#7dd3fc');
       }
     });
 
@@ -2508,6 +2528,9 @@ export class GameEngine {
       newlyUnlockedAbility: this.newlyUnlockedAbility,
       nextStageId: null, // resolved by App
       enemiesDefeatedCount: this.enemiesDefeatedInStage,
+      housesBuiltCount: this.housesBuiltInStage,
+      webSwingsCount: this.webSwingsInStage,
+      secretsFoundCount: this.secretsFoundInStage,
       bossType: this.stage.bossType,
     });
   }

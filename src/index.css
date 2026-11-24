@@ -139,3 +139,30 @@
     animation: none;
   }
 }
+
+.reduce-motion .pixel-btn,
+.reduce-motion .pixel-panel {
+  transition: none !important;
+}
+
+.reduce-motion .zai-neon-banner,
+.reduce-motion .zai-gold-banner,
+.reduce-motion .zai-electric-sweep,
+.reduce-motion .zai-float-text,
+.reduce-motion .animate-pulse,
+.reduce-motion .animate-ping,
+.reduce-motion .animate-spin,
+.reduce-motion .animate-bounce {
+  animation: none !important;
+  transition-duration: 0ms !important;
+}
+
+.high-contrast-hud .pixel-panel {
+  border-color: #f8fafc !important;
+  background-color: #020617 !important;
+}
+
+.high-contrast-hud .pixel-btn {
+  border-width: 2px !important;
+}
+

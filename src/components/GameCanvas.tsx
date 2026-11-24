@@ -19,6 +19,7 @@ interface GameCanvasProps {
   equippedSkin?: string;
   equippedWebDesign?: string;
   spikeyCoinsTotal?: number;
+  isCreator?: boolean;
   paused: boolean;
   restartNonce: number;
   onPauseToggle: () => void;
@@ -34,6 +35,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   equippedSkin = 'classic',
   equippedWebDesign = 'classic_white',
   spikeyCoinsTotal = 0,
+  isCreator = false,
   paused,
   restartNonce,
   onPauseToggle,
@@ -96,6 +98,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     elapsedSec: 0,
     webAttached: false,
     spiderHouseProgress: null,
+    isCreator,
   });
 
   useEffect(() => {
@@ -128,14 +131,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       stage,
       saveData,
       {
-        onHudUpdate: (snapshot) => setHud({ ...snapshot, spikeyCoinsTotal }),
+        onHudUpdate: (snapshot) => setHud({ ...snapshot, spikeyCoinsTotal, isCreator }),
         onStageClear: (summary) => onStageClear(summary),
         onGameOver: (score, coins) => onGameOver(score, coins),
         onSaveProgress: (updater) => onSaveProgress(updater),
       },
       equippedSkin,
       equippedWebDesign,
-      settings.graphicsQuality ?? 'high'
+      settings.graphicsQuality ?? 'high',
+      settings.language,
+      settings.screenShake !== false
     );
     engineRef.current = engine;
 
@@ -149,9 +154,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     engineRef.current?.updateCosmetics(
       equippedSkin,
       equippedWebDesign,
-      settings.graphicsQuality ?? 'high'
+      settings.graphicsQuality ?? 'high',
+      settings.language,
+      settings.screenShake !== false
     );
-  }, [equippedSkin, equippedWebDesign, settings.graphicsQuality]);
+  }, [equippedSkin, equippedWebDesign, settings.graphicsQuality, settings.language, settings.screenShake]);
 
   // Keyboard Listeners
   useEffect(() => {

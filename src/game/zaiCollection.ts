@@ -31,12 +31,12 @@ export const ZAI_MONTHLY_THEMES: Record<SeasonMonth, ZaiMonthlyTheme> = {
   2: {
     month: 2,
     themeCode: 'ZAI-02',
-    nameEn: 'Ruby Frost',
-    nameUz: 'Yoqut Ayoz',
+    nameEn: 'Heart Galaxy',
+    nameUz: 'Yurak Galaktikasi',
     skinId: 'zai_feb_ruby',
     webId: 'zai_web_feb_ruby',
     primaryHex: '#f43f5e',
-    secondaryHex: '#fecdd3',
+    secondaryHex: '#c084fc',
     accentHex: '#fbbf24',
     glowRgba: 'rgba(244, 63, 94, 0.38)',
     releaseDateLabel: 'Feb 01',
@@ -44,8 +44,8 @@ export const ZAI_MONTHLY_THEMES: Record<SeasonMonth, ZaiMonthlyTheme> = {
   3: {
     month: 3,
     themeCode: 'ZAI-03',
-    nameEn: 'Emerald Bloom',
-    nameUz: 'Zumrad Gullash',
+    nameEn: 'Emerald',
+    nameUz: 'Zumrad',
     skinId: 'zai_mar_emerald',
     webId: 'zai_web_mar_emerald',
     primaryHex: '#10b981',
@@ -57,8 +57,8 @@ export const ZAI_MONTHLY_THEMES: Record<SeasonMonth, ZaiMonthlyTheme> = {
   4: {
     month: 4,
     themeCode: 'ZAI-04',
-    nameEn: 'Sakura Crystal',
-    nameUz: 'Sakura Kristalli',
+    nameEn: 'Spring Bloom',
+    nameUz: 'Bahor Gullashi',
     skinId: 'zai_apr_sakura',
     webId: 'zai_web_apr_sakura',
     primaryHex: '#f472b6',
@@ -70,47 +70,47 @@ export const ZAI_MONTHLY_THEMES: Record<SeasonMonth, ZaiMonthlyTheme> = {
   5: {
     month: 5,
     themeCode: 'ZAI-05',
-    nameEn: 'Forest Spirit',
-    nameUz: 'O‘rmon Ruhi',
+    nameEn: 'Solar',
+    nameUz: 'Quyosh Nuri',
     skinId: 'zai_may_forest',
     webId: 'zai_web_may_forest',
-    primaryHex: '#22c55e',
+    primaryHex: '#facc15',
     secondaryHex: '#bef264',
     accentHex: '#fbbf24',
-    glowRgba: 'rgba(34, 197, 94, 0.38)',
+    glowRgba: 'rgba(250, 204, 21, 0.38)',
     releaseDateLabel: 'May 01',
   },
   6: {
     month: 6,
     themeCode: 'ZAI-06',
-    nameEn: 'Ocean Surge',
-    nameUz: 'Okean To‘lqini',
+    nameEn: 'Summer Flame',
+    nameUz: 'Yozgi Alanga',
     skinId: 'zai_jun_ocean',
     webId: 'zai_web_jun_ocean',
-    primaryHex: '#06b6d4',
-    secondaryHex: '#67e8f9',
-    accentHex: '#fbbf24',
-    glowRgba: 'rgba(6, 182, 212, 0.40)',
+    primaryHex: '#f97316',
+    secondaryHex: '#fde047',
+    accentHex: '#38bdf8',
+    glowRgba: 'rgba(249, 115, 22, 0.42)',
     releaseDateLabel: 'Jun 01',
   },
   7: {
     month: 7,
     themeCode: 'ZAI-07',
-    nameEn: 'Solar Flare',
-    nameUz: 'Quyosh Alangasi',
+    nameEn: 'Ocean',
+    nameUz: 'Okean',
     skinId: 'zai_jul_solar',
     webId: 'zai_web_jul_solar',
-    primaryHex: '#f59e0b',
-    secondaryHex: '#fef08a',
-    accentHex: '#fb7185',
-    glowRgba: 'rgba(245, 158, 11, 0.42)',
+    primaryHex: '#06b6d4',
+    secondaryHex: '#67e8f9',
+    accentHex: '#fbbf24',
+    glowRgba: 'rgba(6, 182, 212, 0.42)',
     releaseDateLabel: 'Jul 01',
   },
   8: {
     month: 8,
     themeCode: 'ZAI-08',
-    nameEn: 'Cosmic Starlight',
-    nameUz: 'Kosmik Yulduz Nuri',
+    nameEn: 'Starfall',
+    nameUz: 'Yulduzlar Yomg‘iri',
     skinId: 'zai_aug_cosmic',
     webId: 'zai_web_aug_cosmic',
     primaryHex: '#a855f7',
@@ -122,8 +122,8 @@ export const ZAI_MONTHLY_THEMES: Record<SeasonMonth, ZaiMonthlyTheme> = {
   9: {
     month: 9,
     themeCode: 'ZAI-09',
-    nameEn: 'Shadow Eclipse',
-    nameUz: 'Soya Tutilishi',
+    nameEn: 'Shadow',
+    nameUz: 'Soya',
     skinId: 'zai_sep_shadow',
     webId: 'zai_web_sep_shadow',
     primaryHex: '#6366f1',
@@ -135,8 +135,8 @@ export const ZAI_MONTHLY_THEMES: Record<SeasonMonth, ZaiMonthlyTheme> = {
   10: {
     month: 10,
     themeCode: 'ZAI-10',
-    nameEn: 'Phantom Veil',
-    nameUz: 'Arvoh Pardasi',
+    nameEn: 'Dark Halloween',
+    nameUz: 'Qora Halloween',
     skinId: 'zai_oct_phantom',
     webId: 'zai_web_oct_phantom',
     primaryHex: '#f97316',
@@ -148,14 +148,14 @@ export const ZAI_MONTHLY_THEMES: Record<SeasonMonth, ZaiMonthlyTheme> = {
   11: {
     month: 11,
     themeCode: 'ZAI-11',
-    nameEn: 'Golden Leaf',
-    nameUz: 'Oltin Barg',
+    nameEn: 'Golden Storm',
+    nameUz: 'Oltin Bo‘ron',
     skinId: 'zai_nov_golden',
     webId: 'zai_web_nov_golden',
     primaryHex: '#eab308',
     secondaryHex: '#fde68a',
-    accentHex: '#f97316',
-    glowRgba: 'rgba(234, 179, 8, 0.40)',
+    accentHex: '#38bdf8',
+    glowRgba: 'rgba(234, 179, 8, 0.42)',
     releaseDateLabel: 'Nov 01',
   },
   12: {
@@ -358,11 +358,54 @@ export function getAnnualZaiEventStatus(
 }
 
 export function isZaiEventWindowOpen(eventId?: string, now: Date = new Date()): boolean {
-  if (!eventId) return true;
+  if (!eventId) return false;
   if (eventId !== 'zai_summer' && eventId !== 'zai_starfall' && eventId !== 'zai_shadow') {
-    return true;
+    return false;
   }
   return getAnnualZaiEventStatus(eventId, now).isActive;
+}
+
+export function isZaiMonthlyWindowOpen(seasonalMonth?: number, now: Date = new Date()): boolean {
+  const monthNow = now.getMonth() + 1;
+  const dayNow = now.getDate();
+  if (dayNow < 1 || dayNow > 7) return false;
+  if (typeof seasonalMonth === 'number') {
+    return monthNow === seasonalMonth;
+  }
+  return true;
+}
+
+export function isZaiItemAvailableNow(
+  item: { isZaiLimited?: boolean; eventId?: string; seasonalMonth?: number },
+  now: Date = new Date()
+): boolean {
+  if (!item.isZaiLimited) return true;
+  if (item.eventId) {
+    return isZaiEventWindowOpen(item.eventId, now);
+  }
+  if (typeof item.seasonalMonth === 'number') {
+    return isZaiMonthlyWindowOpen(item.seasonalMonth, now);
+  }
+  return false;
+}
+
+export function isZaiCaseAvailableNow(
+  caseDef: { type: CaseType; isZaiLimited?: boolean; eventId?: string },
+  now: Date = new Date()
+): boolean {
+  if (!caseDef.isZaiLimited) return true;
+  if (caseDef.eventId) {
+    return isZaiEventWindowOpen(caseDef.eventId, now);
+  }
+  if (caseDef.type === 'zai_monthly') {
+    return isZaiMonthlyWindowOpen(undefined, now);
+  }
+  return false;
+}
+
+export function isAnyZaiCollectionActiveNow(now: Date = new Date()): boolean {
+  const anyAnnual = ANNUAL_ZAI_EVENTS.some((ev) => getAnnualZaiEventStatus(ev, now).isActive);
+  return anyAnnual || isZaiMonthlyWindowOpen(undefined, now);
 }
 
 export function getNextAnnualZaiEventStatus(now: Date = new Date()): AnnualZaiEventStatus {

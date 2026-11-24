@@ -86,7 +86,7 @@ export const HUD: React.FC<HUDProps> = ({
             </div>
             <span className="text-slate-500" aria-hidden="true">·</span>
             <span className="font-mono-num text-xs sm:text-sm font-bold text-slate-200">
-              JONLAR ×{hud.lives}
+              {tr(lang, 'livesLabel')} ×{hud.lives}
             </span>
           </div>
           <div className="flex items-center gap-2 text-[11px] sm:text-xs text-slate-300">
@@ -166,8 +166,8 @@ export const HUD: React.FC<HUDProps> = ({
               title="Spikey Coins balansi (+bosqichdagi tangalar)"
             >
               <Coins className="w-4 h-4 shrink-0 text-amber-400" />
-              <span>{totalSpikeyCoins.toLocaleString()}</span>
-              {hud.coins > 0 && (
+              <span>{hud.isCreator ? '∞' : totalSpikeyCoins.toLocaleString()}</span>
+              {!hud.isCreator && hud.coins > 0 && (
                 <span className="text-[10px] text-emerald-300">(+{hud.coins})</span>
               )}
             </div>
@@ -193,11 +193,11 @@ export const HUD: React.FC<HUDProps> = ({
           <button
             type="button"
             onClick={onPause}
-            aria-label="O‘yinni to‘xtatish"
+            aria-label={tr(lang, 'pauseBtn')}
             className="pixel-btn bg-slate-800 hover:bg-slate-700 text-slate-100 p-2.5 sm:px-3 sm:py-2.5 flex items-center gap-1.5"
           >
             <Pause className="w-4 h-4" />
-            <span className="hidden sm:inline font-pixel text-[10px]">PAUZA</span>
+            <span className="hidden sm:inline font-pixel text-[10px]">{tr(lang, 'pauseBtn')}</span>
           </button>
         </div>
       </div>
@@ -227,7 +227,7 @@ export const HUD: React.FC<HUDProps> = ({
                 {hud.boss.name}
               </span>
               <span className="font-mono-num text-slate-300">
-                Bosqich {hud.boss.phase} · {hud.boss.hp}/{hud.boss.maxHp}
+                {tr(lang, 'bossPhaseLabel', { phase: hud.boss.phase })} · {hud.boss.hp}/{hud.boss.maxHp}
               </span>
             </div>
             <div className="h-3 w-full bg-slate-900 border border-slate-700 overflow-hidden">
@@ -283,56 +283,56 @@ export const HUD: React.FC<HUDProps> = ({
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
-                aria-label="5 yo‘nalishli to‘r to‘qish"
+                aria-label={tr(lang, 'touchWebHouse')}
                 {...bindTouch('webNet')}
                 className="pixel-btn w-13 h-12 bg-slate-800/90 active:bg-slate-400/40 text-slate-100 font-pixel text-[9px] flex flex-col items-center justify-center"
               >
-                <span>TO‘R</span>
+                <span>{tr(lang, 'touchWebHouse')}</span>
                 <span className="text-[8px] opacity-75">E</span>
               </button>
               <button
                 type="button"
-                aria-label="To‘rda uchish"
+                aria-label={tr(lang, 'touchWebSwing')}
                 {...bindTouch('webSwing')}
                 className="pixel-btn w-13 h-12 bg-amber-950/85 active:bg-amber-500/40 text-amber-300 font-pixel text-[9px] flex flex-col items-center justify-center"
               >
-                <span>UCHISH</span>
+                <span>{tr(lang, 'touchWebSwing')}</span>
                 <span className="text-[8px] opacity-75">Q</span>
               </button>
               <button
                 type="button"
-                aria-label="O‘rgimchak shiddati"
+                aria-label={tr(lang, 'touchDash')}
                 {...bindTouch('sprint')}
                 className="pixel-btn w-13 h-12 bg-pink-950/85 active:bg-pink-500/40 text-pink-300 font-pixel text-[8px] flex flex-col items-center justify-center"
               >
-                <span>SHIDDAT</span>
+                <span>{tr(lang, 'touchDash')}</span>
                 <span className="text-[8px] opacity-75">SHIFT</span>
               </button>
               <button
                 type="button"
-                aria-label="Maxsus qobiliyat"
+                aria-label={tr(lang, 'touchSpecial')}
                 {...bindTouch('special')}
                 className="pixel-btn w-13 h-13 bg-purple-950/85 active:bg-purple-500/40 text-purple-300 font-pixel text-[9px] flex flex-col items-center justify-center"
               >
                 <Sparkles className="w-3.5 h-3.5 mb-0.5" />
-                <span>MAXSUS</span>
+                <span>{tr(lang, 'touchSpecial')}</span>
               </button>
               <button
                 type="button"
-                aria-label="To‘r otish"
+                aria-label={tr(lang, 'touchWebAttack')}
                 {...bindTouch('webAttack')}
                 className="pixel-btn w-13 h-13 bg-sky-950/85 active:bg-sky-500/40 text-sky-300 font-pixel text-[9px] flex flex-col items-center justify-center"
               >
                 <Shield className="w-3.5 h-3.5 mb-0.5" />
-                <span>TO‘R</span>
+                <span>{tr(lang, 'touchWebAttack')}</span>
               </button>
               <button
                 type="button"
-                aria-label="Sakrash"
+                aria-label={tr(lang, 'touchJump')}
                 {...bindTouch('jump')}
                 className="pixel-btn w-13 h-13 bg-rose-950/85 active:bg-rose-500/40 text-rose-200 font-pixel text-[9px] flex items-center justify-center"
               >
-                SAKRASH
+                {tr(lang, 'touchJump')}
               </button>
             </div>
           </div>

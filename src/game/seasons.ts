@@ -379,34 +379,48 @@ export function getLiveCalendarInfo(now = new Date()): LiveCalendarInfo {
 }
 
 // ===================================================
-// 50-LEVEL SEASON PASS
+// 103-LEVEL DUAL-TRACK SEASON PASS (XP-ONLY UNLOCKS)
 // ===================================================
-export type SeasonRewardKind = 'coins' | 'case' | 'skin' | 'special';
+export const MAX_SEASON_LEVEL = 103;
 
-export interface SeasonPassLevelDef {
-  level: number;
-  xpRequiredCumulative: number;
+export type SeasonRewardKind = 'coins' | 'case' | 'skin' | 'web' | 'avatar' | 'frame' | 'special';
+
+export interface SeasonTrackRewardSlot {
   rewardKind: SeasonRewardKind;
   coins?: number;
   caseType?: CaseType;
   skinId?: string;
+  webDesignId?: string;
+  avatarId?: string;
+  profileFrameId?: string;
   specialItemId?: string;
   labelUz: string;
+}
+
+export interface SeasonPassLevelDef extends SeasonTrackRewardSlot {
+  level: number;
+  xpRequiredCumulative: number;
   highlight?: boolean;
+  bonus: SeasonTrackRewardSlot;
 }
 
 export function getXpForLevel(level: number): number {
   if (level <= 1) return 0;
   let total = 0;
   for (let l = 2; l <= level; l++) {
-    total += 100 + (l - 2) * 20;
+    total += 280 + (l - 2) * 70 + Math.floor(Math.pow(l - 2, 1.2) * 12);
   }
   return total;
 }
 
+export function getSeasonLevelSkipCost(currentLevel: number): number {
+  const lvl = Math.max(1, Math.min(MAX_SEASON_LEVEL - 1, Math.floor(currentLevel)));
+  return Math.round(50000 * Math.pow(2, lvl - 1));
+}
+
 export function getSeasonLevelFromXp(xp: number): number {
   let lvl = 1;
-  for (let l = 2; l <= 50; l++) {
+  for (let l = 2; l <= MAX_SEASON_LEVEL; l++) {
     if (xp >= getXpForLevel(l)) {
       lvl = l;
     } else {
@@ -419,108 +433,178 @@ export function getSeasonLevelFromXp(xp: number): number {
 export function buildSeasonPassLevels(month: SeasonMonth): SeasonPassLevelDef[] {
   const season = SEASONS_12[month];
   const randomPool = ALL_SKINS.filter((s) => s.rarity === 'uncommon' || s.rarity === 'rare');
+  const elitePool = ALL_SKINS.filter((s) => s.rarity === 'epic' || s.rarity === 'legendary');
+  const mythicPool = ALL_SKINS.filter((s) => s.rarity === 'mythic' || s.rarity === 'limited');
   const commonSkins = ALL_SKINS.filter((s) => s.rarity === 'common' || s.rarity === 'uncommon');
   const fallbackPick = (idx: number) => randomPool[idx % randomPool.length].id;
+  const elitePick = (idx: number) => (elitePool.length > 0 ? elitePool[idx % elitePool.length].id : fallbackPick(idx));
+  const mythicPick = (idx: number) => (mythicPool.length > 0 ? mythicPool[idx % mythicPool.length].id : season.mythicSkinId);
 
   const levels: SeasonPassLevelDef[] = [];
-  for (let level = 1; level <= 50; level++) {
+  for (let level = 1; level <= MAX_SEASON_LEVEL; level++) {
     const xpRequiredCumulative = getXpForLevel(level);
-    let def: SeasonPassLevelDef;
+    let free: SeasonTrackRewardSlot;
+    let highlight = false;
 
     if (level === 1) {
-      def = { level, xpRequiredCumulative, rewardKind: 'coins', coins: 100, labelUz: '100 Spikey Coins' };
+      free = { rewardKind: 'coins', coins: 120, labelUz: '120 Spikey Coins' };
     } else if (level === 2) {
-      def = { level, xpRequiredCumulative, rewardKind: 'case', caseType: 'common', labelUz: 'Oddiy Keys' };
+      free = { rewardKind: 'case', caseType: 'common', labelUz: 'Oddiy Keys' };
     } else if (level === 3) {
-      def = { level, xpRequiredCumulative, rewardKind: 'coins', coins: 150, labelUz: '150 Spikey Coins' };
+      free = { rewardKind: 'coins', coins: 180, labelUz: '180 Spikey Coins' };
     } else if (level === 4) {
-      def = {
-        level,
-        xpRequiredCumulative,
+      free = {
         rewardKind: 'skin',
         skinId: commonSkins[month % commonSkins.length].id,
-        labelUz: 'Tasodifiy Skin',
+        labelUz: 'Boshlang‘ich Skin',
       };
     } else if (level === 5) {
-      def = { level, xpRequiredCumulative, rewardKind: 'case', caseType: 'uncommon', labelUz: 'Noyobroq Keys', highlight: true };
+      free = { rewardKind: 'case', caseType: 'uncommon', labelUz: 'Noyobroq Keys' };
+      highlight = true;
     } else if (level === 10) {
-      def = { level, xpRequiredCumulative, rewardKind: 'case', caseType: 'rare', labelUz: 'Nodir Keys', highlight: true };
+      free = { rewardKind: 'case', caseType: 'rare', labelUz: 'Nodir Keys' };
+      highlight = true;
     } else if (level === 15) {
-      def = { level, xpRequiredCumulative, rewardKind: 'coins', coins: 500, labelUz: '500 Spikey Coins', highlight: true };
+      free = { rewardKind: 'coins', coins: 600, labelUz: '600 Spikey Coins' };
+      highlight = true;
     } else if (level === 20) {
-      def = { level, xpRequiredCumulative, rewardKind: 'case', caseType: 'epic', labelUz: 'Epik Keys', highlight: true };
+      free = { rewardKind: 'case', caseType: 'epic', labelUz: 'Epik Keys' };
+      highlight = true;
     } else if (level === 25) {
-      def = {
-        level,
-        xpRequiredCumulative,
+      free = {
         rewardKind: 'skin',
         skinId: fallbackPick(month + 3),
         labelUz: 'Eksklyuziv Skin',
-        highlight: true,
       };
+      highlight = true;
     } else if (level === 30) {
-      def = { level, xpRequiredCumulative, rewardKind: 'case', caseType: 'legendary', labelUz: 'Afsonaviy Keys', highlight: true };
+      free = { rewardKind: 'case', caseType: 'legendary', labelUz: 'Afsonaviy Keys' };
+      highlight = true;
     } else if (level === 40) {
-      def = {
-        level,
-        xpRequiredCumulative,
+      free = {
         rewardKind: 'skin',
         skinId: season.featuredSkinId,
         labelUz: 'Nodir Sezon Skini',
-        highlight: true,
       };
+      highlight = true;
     } else if (level === 50) {
-      def = {
-        level,
-        xpRequiredCumulative,
+      free = {
         rewardKind: 'skin',
         skinId: season.mythicSkinId,
         labelUz: 'MIFIK SEZON SKINI',
-        highlight: true,
       };
+      highlight = true;
+    } else if (level === 60) {
+      free = { rewardKind: 'case', caseType: 'legendary', labelUz: 'Afsonaviy Grand Keys' };
+      highlight = true;
+    } else if (level === 70) {
+      free = {
+        rewardKind: 'skin',
+        skinId: elitePick(month + 5),
+        labelUz: 'Elita Jangchi Skini',
+      };
+      highlight = true;
+    } else if (level === 80) {
+      free = { rewardKind: 'case', caseType: 'mythic', labelUz: 'Mifik Keys (LVL 80)' };
+      highlight = true;
+    } else if (level === 90) {
+      free = {
+        rewardKind: 'skin',
+        skinId: mythicPick(month + 2),
+        labelUz: 'Mifik Lord Skini',
+      };
+      highlight = true;
+    } else if (level === 100) {
+      free = { rewardKind: 'case', caseType: 'mythic', labelUz: 'Omega Mifik Keys (LVL 100)' };
+      highlight = true;
+    } else if (level === 103) {
+      free = {
+        rewardKind: 'skin',
+        skinId: season.mythicSkinId,
+        labelUz: '103 MAX · MUTLAQ MIFIK',
+      };
+      highlight = true;
     } else if (level % 7 === 0) {
-      def = {
-        level,
-        xpRequiredCumulative,
-        rewardKind: 'case',
-        caseType: 'seasonal',
-        labelUz: 'Sezon Keysi',
-      };
+      free = { rewardKind: 'case', caseType: 'seasonal', labelUz: 'Sezon Keysi' };
     } else if (level % 6 === 0) {
-      def = {
-        level,
-        xpRequiredCumulative,
+      free = {
         rewardKind: 'case',
-        caseType: level >= 35 ? 'rare' : 'uncommon',
-        labelUz: level >= 35 ? 'Nodir Keys' : 'Noyobroq Keys',
+        caseType: level >= 55 ? 'epic' : level >= 35 ? 'rare' : 'uncommon',
+        labelUz: level >= 55 ? 'Epik Keys' : level >= 35 ? 'Nodir Keys' : 'Noyobroq Keys',
       };
     } else if (level % 5 === 0) {
-      def = {
-        level,
-        xpRequiredCumulative,
+      free = {
         rewardKind: 'coins',
-        coins: 400 + level * 15,
-        labelUz: `${400 + level * 15} Spikey Coins`,
+        coins: 420 + level * 25,
+        labelUz: `${(420 + level * 25).toLocaleString()} Spikey Coins`,
       };
     } else if (level % 4 === 0) {
-      def = {
-        level,
-        xpRequiredCumulative,
+      free = {
         rewardKind: 'special',
         specialItemId: level % 8 === 0 ? 'lucky_clover' : 'xp_boost',
         labelUz: level % 8 === 0 ? 'Omad Nishoni' : 'Sezon XP Kuchaytirgich',
       };
     } else {
-      const amount = 150 + level * 12;
-      def = {
-        level,
-        xpRequiredCumulative,
-        rewardKind: 'coins',
-        coins: amount,
-        labelUz: `${amount} Spikey Coins`,
+      const amount = 160 + level * 18;
+      free = { rewardKind: 'coins', coins: amount, labelUz: `${amount.toLocaleString()} Spikey Coins` };
+    }
+
+    // Dual-Track Bonus Tier
+    let bonus: SeasonTrackRewardSlot;
+    if (level === 6) {
+      bonus = { rewardKind: 'web', webDesignId: 'frost_ice_blue', labelUz: 'Muz Ipak To‘ri' };
+    } else if (level === 12) {
+      bonus = { rewardKind: 'avatar', avatarId: 'av_zai_crystal_crown', labelUz: 'ZAI Avatar' };
+    } else if (level === 18) {
+      bonus = { rewardKind: 'frame', profileFrameId: 'frame_emerald_silk', labelUz: 'Zumrad Ramka' };
+    } else if (level === 24) {
+      bonus = { rewardKind: 'web', webDesignId: 'prism_crystal_web', labelUz: 'Kristall To‘r Dizayni' };
+    } else if (level === 28) {
+      bonus = { rewardKind: 'frame', profileFrameId: 'frame_amethyst_prism', labelUz: 'Binafsha Ramka' };
+    } else if (level === 35) {
+      bonus = { rewardKind: 'avatar', avatarId: 'av_aurora_mythic', labelUz: 'Aurora Mifik Avatar' };
+    } else if (level === 38) {
+      bonus = { rewardKind: 'web', webDesignId: 'imperial_gold_web', labelUz: 'Oltin To‘r Dizayni' };
+    } else if (level === 42) {
+      bonus = { rewardKind: 'frame', profileFrameId: 'frame_gold_monarch', labelUz: 'Qirollik Oltin Ramkasi' };
+    } else if (level === 45) {
+      bonus = { rewardKind: 'case', caseType: 'legendary', labelUz: 'Afsonaviy Bonus Keys' };
+    } else if (level === 48) {
+      bonus = { rewardKind: 'frame', profileFrameId: 'frame_zai_neon', labelUz: 'ZAI Neon Ramkasi' };
+    } else if (level === 50) {
+      bonus = { rewardKind: 'web', webDesignId: month % 2 === 0 ? 'cosmic_galaxy_web' : 'rainbow_aurora_web', labelUz: 'Mifik Galaktika To‘r Dizayni' };
+    } else if (level === 65) {
+      bonus = { rewardKind: 'web', webDesignId: 'shadow_crimson_web', labelUz: 'Soya Qizil To‘ri' };
+    } else if (level === 75) {
+      bonus = { rewardKind: 'case', caseType: 'mythic', labelUz: 'Mifik Bonus Keys' };
+    } else if (level === 85) {
+      bonus = { rewardKind: 'web', webDesignId: 'emerald_venom_web', labelUz: 'Zumrad Zahar To‘ri' };
+    } else if (level === 95) {
+      bonus = { rewardKind: 'case', caseType: 'legendary', labelUz: 'Elita Afsonaviy Keys' };
+    } else if (level === 103) {
+      bonus = { rewardKind: 'web', webDesignId: 'cosmic_galaxy_web', labelUz: '103 MAX · MIFIK KOSMIK TO‘R' };
+    } else if (level % 9 === 0) {
+      bonus = { rewardKind: 'case', caseType: 'epic', labelUz: 'Epik Bonus Keys' };
+    } else if (level % 5 === 0) {
+      bonus = { rewardKind: 'case', caseType: 'seasonal', labelUz: 'Sezon Bonus Keys' };
+    } else if (level % 3 === 0) {
+      const bCoins = 220 + level * 20;
+      bonus = { rewardKind: 'coins', coins: bCoins, labelUz: `+${bCoins.toLocaleString()} Spikey Coins` };
+    } else {
+      bonus = {
+        rewardKind: 'special',
+        specialItemId: level % 2 === 0 ? 'season_token' : 'xp_boost',
+        labelUz: level % 2 === 0 ? 'Bayram Nishoni' : 'Sezon XP Kuchaytirgich',
       };
     }
-    levels.push(def);
+
+    levels.push({
+      level,
+      xpRequiredCumulative,
+      highlight,
+      ...free,
+      bonus,
+    });
   }
   return levels;
 }
